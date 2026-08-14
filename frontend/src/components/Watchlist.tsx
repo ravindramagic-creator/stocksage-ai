@@ -5,6 +5,9 @@ import {
   useWatchlist,
 } from "../hooks/useWatchlist";
 
+import { WatchlistPrice } from "./WatchlistPrice";
+
+
 export function Watchlist() {
   const {
     data: watchlist,
@@ -15,6 +18,7 @@ export function Watchlist() {
   const removeMutation =
     useRemoveFromWatchlist();
 
+
   if (isLoading) {
     return (
       <div className="text-slate-400">
@@ -23,6 +27,7 @@ export function Watchlist() {
     );
   }
 
+
   if (isError) {
     return (
       <div className="text-red-400">
@@ -30,6 +35,7 @@ export function Watchlist() {
       </div>
     );
   }
+
 
   if (!watchlist?.length) {
     return (
@@ -50,6 +56,7 @@ export function Watchlist() {
     );
   }
 
+
   return (
     <div className="space-y-3">
       {watchlist.map((item) => (
@@ -58,32 +65,36 @@ export function Watchlist() {
           className="
             flex items-center
             justify-between
+            gap-4
             rounded-xl
             border border-slate-800
             bg-slate-900
             p-4
           "
         >
-          <div>
-            <Link
-              to={`/stock/${item.stock.symbol}`}
-              className="
-                font-semibold
-                text-blue-400
-                hover:text-blue-300
-              "
-            >
+          <Link
+            to={`/stock/${item.stock.symbol}`}
+            className="min-w-0 flex-1"
+          >
+            <div className="font-semibold text-blue-400">
               {item.stock.symbol}
-            </Link>
+            </div>
 
-            <div className="text-sm text-slate-400">
+            <div className="truncate text-sm text-slate-400">
               {item.stock.company_name}
             </div>
 
             <div className="mt-1 text-xs text-slate-500">
-              {item.stock.sector ?? "Unknown sector"}
+              {item.stock.sector ??
+                "Unknown sector"}
             </div>
-          </div>
+          </Link>
+
+
+          <WatchlistPrice
+            symbol={item.stock.symbol}
+          />
+
 
           <button
             onClick={() =>
@@ -91,7 +102,9 @@ export function Watchlist() {
                 item.stock.symbol,
               )
             }
-            disabled={removeMutation.isPending}
+            disabled={
+              removeMutation.isPending
+            }
             className="
               rounded-lg
               px-3 py-2

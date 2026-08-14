@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
-from app.repositories.stock_repository import StockRepository
 from app.schemas.stock import StockResponse
+from app.services.stock_service import StockService
+
 
 router = APIRouter(
     prefix="/stocks",
@@ -18,9 +19,9 @@ router = APIRouter(
 def get_stocks(
     db: Session = Depends(get_db),
 ):
-    repository = StockRepository(db)
+    service = StockService(db)
 
-    return repository.get_all()
+    return service.get_all()
 
 
 @router.get(
@@ -31,9 +32,12 @@ def search_stocks(
     q: str,
     db: Session = Depends(get_db),
 ):
-    repository = StockRepository(db)
+    service = StockService(db)
 
-    return repository.search(q)
+    if not q.strip():
+        return []
+
+    return service.search(q)
 
 
 @router.get(
@@ -44,13 +48,13 @@ def get_stock(
     symbol: str,
     db: Session = Depends(get_db),
 ):
-    repository = StockRepository(db)
+    from fastapi import HTTPException
 
-    stock = repository.get_by_symbol(symbol)
+    service = StockService(db)
+
+    stock = service.get_by_symbol(symbol)
 
     if stock is None:
-        from fastapi import HTTPException
-
         raise HTTPException(
             status_code=404,
             detail=f"Stock '{symbol}' not found",

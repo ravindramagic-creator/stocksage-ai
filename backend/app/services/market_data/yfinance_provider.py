@@ -12,17 +12,40 @@ from app.services.market_data.base import (
 )
 
 
-class YFinanceProvider(MarketDataProvider):
+class YFinanceProvider(
+    MarketDataProvider
+):
 
     @staticmethod
-    def _ticker_symbol(symbol: str) -> str:
-        return f"{symbol.upper()}.NS"
+    def _ticker_symbol(
+        symbol: str,
+    ) -> str:
 
-    def get_quote(self, symbol: str) -> StockQuote:
+        symbol = symbol.upper()
+
+        if symbol in {
+            "^NSEI",
+            "^BSESN",
+        }:
+            return symbol
+
+        if symbol.endswith(".NS"):
+            return symbol
+
+        return f"{symbol}.NS"
+
+
+    def get_quote(
+        self,
+        symbol: str,
+    ) -> StockQuote:
+
         normalized_symbol = symbol.upper()
 
         ticker = yf.Ticker(
-            self._ticker_symbol(normalized_symbol)
+            self._ticker_symbol(
+                normalized_symbol
+            )
         )
 
         fast_info = ticker.fast_info
@@ -54,11 +77,17 @@ class YFinanceProvider(MarketDataProvider):
         change = None
         change_percent = None
 
-        if price is not None and previous_close:
-            change = price - previous_close
+        if (
+            price is not None
+            and previous_close
+        ):
+            change = (
+                price - previous_close
+            )
 
             change_percent = (
-                change / previous_close
+                change
+                / previous_close
             ) * 100
 
         return StockQuote(
@@ -72,10 +101,12 @@ class YFinanceProvider(MarketDataProvider):
             change=change,
             change_percent=change_percent,
             currency="INR",
+            market_state=None,
             updated_at=datetime.now(
                 timezone.utc
             ),
         )
+
 
     def get_history(
         self,
@@ -87,7 +118,9 @@ class YFinanceProvider(MarketDataProvider):
         normalized_symbol = symbol.upper()
 
         ticker = yf.Ticker(
-            self._ticker_symbol(normalized_symbol)
+            self._ticker_symbol(
+                normalized_symbol
+            )
         )
 
         history = ticker.history(
@@ -100,11 +133,18 @@ class YFinanceProvider(MarketDataProvider):
 
         for timestamp, row in history.iterrows():
 
-            timestamp_value = timestamp.to_pydatetime()
+            timestamp_value = (
+                timestamp.to_pydatetime()
+            )
 
-            if timestamp_value.tzinfo is None:
-                timestamp_value = timestamp_value.replace(
-                    tzinfo=timezone.utc
+            if (
+                timestamp_value.tzinfo
+                is None
+            ):
+                timestamp_value = (
+                    timestamp_value.replace(
+                        tzinfo=timezone.utc
+                    )
                 )
 
             points.append(
@@ -134,22 +174,38 @@ class YFinanceProvider(MarketDataProvider):
             points=points,
         )
 
+
     @staticmethod
-    def _safe_float(value) -> float | None:
+    def _safe_float(
+        value,
+    ) -> float | None:
+
         if value is None:
             return None
 
         try:
             return float(value)
-        except (TypeError, ValueError):
+
+        except (
+            TypeError,
+            ValueError,
+        ):
             return None
 
+
     @staticmethod
-    def _safe_int(value) -> int | None:
+    def _safe_int(
+        value,
+    ) -> int | None:
+
         if value is None:
             return None
 
         try:
             return int(value)
-        except (TypeError, ValueError):
+
+        except (
+            TypeError,
+            ValueError,
+        ):
             return None

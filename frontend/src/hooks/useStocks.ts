@@ -12,13 +12,23 @@ export function useStocks() {
   });
 }
 
-export function useStockSearch(query: string) {
+export function useStockSearch(
+  query: string,
+) {
+  const normalizedQuery =
+    query.trim().toUpperCase();
+
   return useQuery({
-    queryKey: ["stock-search", query],
+    queryKey: [
+      "stock-search",
+      normalizedQuery,
+    ],
 
-    queryFn: () => searchStocks(query),
+    queryFn: () =>
+      searchStocks(normalizedQuery),
 
-    enabled: query.trim().length > 0,
+    enabled:
+      normalizedQuery.length >= 2,
 
     staleTime: 30_000,
   });

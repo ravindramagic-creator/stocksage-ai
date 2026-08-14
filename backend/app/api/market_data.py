@@ -4,9 +4,10 @@ from app.schemas.market_data import (
     HistoricalPrices,
     StockQuote,
 )
-from app.services.market_data.factory import (
-    get_market_data_provider,
+from app.services.market_service import (
+    get_market_service,
 )
+
 
 router = APIRouter(
     prefix="/market",
@@ -28,10 +29,10 @@ def get_quote(symbol: str):
             detail="Stock symbol is required",
         )
 
-    provider = get_market_data_provider()
+    service = get_market_service()
 
     try:
-        quote = provider.get_quote(symbol)
+        quote = service.get_quote(symbol)
 
     except Exception as exc:
         raise HTTPException(
@@ -45,10 +46,7 @@ def get_quote(symbol: str):
     if quote.price is None:
         raise HTTPException(
             status_code=404,
-            detail=(
-                f"No market data found for "
-                f"'{symbol}'"
-            ),
+            detail=f"No market data found for '{symbol}'",
         )
 
     return quote
@@ -64,8 +62,6 @@ def get_history(
     interval: str = "1d",
 ):
 
-    symbol = symbol.strip().upper()
-
     allowed_periods = {
         "1d",
         "5d",
@@ -73,8 +69,6 @@ def get_history(
         "3mo",
         "6mo",
         "1y",
-        "2y",
-        "5y",
     }
 
     allowed_intervals = {
@@ -97,16 +91,13 @@ def get_history(
     if interval not in allowed_intervals:
         raise HTTPException(
             status_code=400,
-            detail=(
-                f"Unsupported interval: "
-                f"{interval}"
-            ),
+            detail=f"Unsupported interval: {interval}",
         )
 
-    provider = get_market_data_provider()
+    service = get_market_service()
 
     try:
-        history = provider.get_history(
+        return service.get_history(
             symbol=symbol,
             period=period,
             interval=interval,
@@ -120,5 +111,3 @@ def get_history(
                 f"data for '{symbol}'"
             ),
         ) from exc
-
-    return history

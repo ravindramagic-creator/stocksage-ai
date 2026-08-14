@@ -4,6 +4,7 @@ import { SearchBar } from "../components/SearchBar";
 import { StockSearchResults } from "../components/StockSearchResults";
 import { Watchlist } from "../components/Watchlist";
 import { useStockSearch } from "../hooks/useStocks";
+import { MarketSummary } from "../components/MarketSummary";
 
 export function Dashboard() {
   const [searchQuery, setSearchQuery] =
@@ -27,6 +28,20 @@ export function Dashboard() {
             Your personal stock intelligence dashboard
           </p>
         </header>
+
+        <section className="mb-8">
+          <div className="mb-4">
+           <h2 className="text-xl font-semibold text-white">
+            Indian Market
+           </h2>
+
+          <p className="text-sm text-slate-500">
+             NIFTY 50 and SENSEX
+          </p>
+        </div>
+
+  <MarketSummary />
+</section>
 
         <section className="mb-8">
           <SearchBar

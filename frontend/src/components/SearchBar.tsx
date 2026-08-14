@@ -9,6 +9,15 @@ export function SearchBar({
 }: SearchBarProps) {
   const [query, setQuery] = useState("");
 
+  function handleChange(
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) {
+    const value = event.target.value;
+
+    setQuery(value);
+    onSearch(value.trim());
+  }
+
   function handleSubmit(
     event: React.FormEvent,
   ) {
@@ -20,16 +29,15 @@ export function SearchBar({
   return (
     <form
       onSubmit={handleSubmit}
-      className="flex w-full gap-2"
+      className="relative flex w-full gap-2"
     >
       <input
         value={query}
-        onChange={(event) =>
-          setQuery(event.target.value)
-        }
-        placeholder="Search stocks..."
+        onChange={handleChange}
+        placeholder="Search NSE stocks..."
         className="
-          w-full rounded-lg
+          w-full
+          rounded-lg
           border border-slate-700
           bg-slate-900
           px-4 py-3

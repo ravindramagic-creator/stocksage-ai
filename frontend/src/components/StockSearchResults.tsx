@@ -12,7 +12,16 @@ export function StockSearchResults({
 
   if (!stocks.length) {
     return (
-      <div className="text-sm text-slate-400">
+      <div
+        className="
+          rounded-lg
+          border border-slate-800
+          bg-slate-900
+          p-4
+          text-sm
+          text-slate-400
+        "
+      >
         No stocks found.
       </div>
     );
@@ -40,6 +49,13 @@ export function StockSearchResults({
             <div className="text-sm text-slate-400">
               {stock.company_name}
             </div>
+
+            <div className="text-xs text-slate-500">
+              {stock.exchange}
+              {stock.sector
+                ? ` • ${stock.sector}`
+                : ""}
+            </div>
           </div>
 
           <button
@@ -56,10 +72,13 @@ export function StockSearchResults({
               text-sm
               text-white
               hover:bg-emerald-500
+              disabled:cursor-not-allowed
               disabled:opacity-50
             "
           >
-            + Watch
+            {mutation.isPending
+              ? "Adding..."
+              : "+ Watch"}
           </button>
         </div>
       ))}

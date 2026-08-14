@@ -1,6 +1,10 @@
-import { useParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useParams } from "react-router-dom";
 
+import { ChartRangeSelector } from "../components/ChartRangeSelector";
+import { PriceChart } from "../components/PriceChart";
 import { useQuote } from "../hooks/useQuote";
+
 
 function formatNumber(
   value: number | null,
@@ -9,10 +13,14 @@ function formatNumber(
     return "—";
   }
 
-  return value.toLocaleString("en-IN", {
-    maximumFractionDigits: 2,
-  });
+  return value.toLocaleString(
+    "en-IN",
+    {
+      maximumFractionDigits: 2,
+    },
+  );
 }
+
 
 function formatVolume(
   value: number | null,
@@ -36,8 +44,17 @@ function formatVolume(
   return value.toString();
 }
 
+
 export function StockDetail() {
-  const { symbol = "" } = useParams();
+  const {
+    symbol = "",
+  } = useParams();
+
+  const [period, setPeriod] =
+    useState("1mo");
+
+  const [interval, setInterval] =
+    useState("1d");
 
   const {
     data: quote,
@@ -59,7 +76,8 @@ export function StockDetail() {
     return (
       <main className="min-h-screen bg-slate-950 p-8">
         <div className="text-red-400">
-          Unable to load market data for {symbol}.
+          Unable to load market data for{" "}
+          {symbol}.
         </div>
       </main>
     );
@@ -72,15 +90,22 @@ export function StockDetail() {
     <main className="min-h-screen bg-slate-950">
       <div className="mx-auto max-w-6xl px-6 py-8">
 
-        <div className="mb-8">
+        <Link
+          to="/"
+          className="text-sm text-blue-400 hover:text-blue-300"
+        >
+          ← Back to Dashboard
+        </Link>
+
+        <header className="mb-6 mt-6">
           <div className="text-sm text-slate-500">
             NSE
           </div>
 
-          <h1 className="mt-1 text-3xl font-bold text-white">
+          <h1 className="text-3xl font-bold text-white">
             {quote.symbol}
           </h1>
-        </div>
+        </header>
 
         <section
           className="
@@ -163,24 +188,37 @@ export function StockDetail() {
           </div>
         </section>
 
-        <section className="mt-6">
-          <h2 className="mb-4 text-xl font-semibold text-white">
-            Price History
-          </h2>
+        <section
+          className="
+            mt-6
+            rounded-2xl
+            border border-slate-800
+            bg-slate-900
+            p-6
+          "
+        >
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
+            <h2 className="text-xl font-semibold text-white">
+              Price History
+            </h2>
 
-          <div
-            className="
-              flex h-80
-              items-center
-              justify-center
-              rounded-2xl
-              border border-slate-800
-              bg-slate-900
-              text-slate-500
-            "
-          >
-            Chart coming next.
+            <ChartRangeSelector
+              value={period}
+              onChange={(
+                newPeriod,
+                newInterval,
+              ) => {
+                setPeriod(newPeriod);
+                setInterval(newInterval);
+              }}
+            />
           </div>
+
+          <PriceChart
+            symbol={symbol}
+            period={period}
+            interval={interval}
+          />
         </section>
 
       </div>
@@ -188,10 +226,12 @@ export function StockDetail() {
   );
 }
 
+
 interface MetricProps {
   label: string;
   value: string;
 }
+
 
 function Metric({
   label,

@@ -11,6 +11,9 @@ from app.db.init_db import initialize_database
 from app.api.market_data import (
     router as market_data_router,
 )
+from app.api.indices import (
+    router as indices_router,
+)
 
 
 @asynccontextmanager
@@ -40,3 +43,4 @@ app.include_router(health_router)
 app.include_router(stocks_router)
 app.include_router(watchlist_router)
 app.include_router(market_data_router)
+app.include_router(indices_router)
