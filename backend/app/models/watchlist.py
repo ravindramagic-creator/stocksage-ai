@@ -1,18 +1,17 @@
-from typing import TYPE_CHECKING
-
 from sqlalchemy import ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.database import Base
-
-if TYPE_CHECKING:
-    from app.models.stock import Stock
+from app.models.stock import Stock
 
 
 class Watchlist(Base):
     __tablename__ = "watchlist"
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
 
     stock_id: Mapped[int] = mapped_column(
         ForeignKey("stocks.id", ondelete="CASCADE"),
@@ -21,4 +20,4 @@ class Watchlist(Base):
         index=True,
     )
 
-    stock: Mapped["Stock"] = relationship()
+    stock: Mapped[Stock] = relationship()
