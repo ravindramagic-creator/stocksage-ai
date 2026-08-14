@@ -1,3 +1,5 @@
+import { Link } from "react-router-dom";
+
 import {
   useRemoveFromWatchlist,
   useWatchlist,
@@ -63,9 +65,16 @@ export function Watchlist() {
           "
         >
           <div>
-            <div className="font-semibold text-white">
+            <Link
+              to={`/stock/${item.stock.symbol}`}
+              className="
+                font-semibold
+                text-blue-400
+                hover:text-blue-300
+              "
+            >
               {item.stock.symbol}
-            </div>
+            </Link>
 
             <div className="text-sm text-slate-400">
               {item.stock.company_name}

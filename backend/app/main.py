@@ -8,6 +8,9 @@ from app.api.stocks import router as stocks_router
 from app.api.watchlist import router as watchlist_router
 from app.core.config import settings
 from app.db.init_db import initialize_database
+from app.api.market_data import (
+    router as market_data_router,
+)
 
 
 @asynccontextmanager
@@ -36,3 +39,4 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(stocks_router)
 app.include_router(watchlist_router)
+app.include_router(market_data_router)
