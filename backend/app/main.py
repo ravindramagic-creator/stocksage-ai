@@ -14,7 +14,13 @@ from app.api.market_data import (
 from app.api.indices import (
     router as indices_router,
 )
+from app.api.stock_search import (
+    router as stock_search_router,
+)
 
+from app.api.subscriptions import (
+    router as subscriptions_router,
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,3 +50,10 @@ app.include_router(stocks_router)
 app.include_router(watchlist_router)
 app.include_router(market_data_router)
 app.include_router(indices_router)
+app.include_router(
+    stock_search_router
+)
+
+app.include_router(
+    subscriptions_router
+)

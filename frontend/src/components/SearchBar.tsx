@@ -1,51 +1,72 @@
 import { useState } from "react";
 
+
 interface SearchBarProps {
-  onSearch: (query: string) => void;
+  onSearch: (
+    query: string,
+  ) => void;
 }
+
 
 export function SearchBar({
   onSearch,
 }: SearchBarProps) {
-  const [query, setQuery] = useState("");
 
-  function handleChange(
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) {
-    const value = event.target.value;
+  const [query, setQuery] =
+    useState("");
 
-    setQuery(value);
-    onSearch(value.trim());
-  }
 
   function handleSubmit(
     event: React.FormEvent,
   ) {
+
     event.preventDefault();
 
-    onSearch(query.trim());
+    const value =
+      query.trim();
+
+    if (value.length >= 2) {
+      onSearch(value);
+    }
   }
+
 
   return (
     <form
-      onSubmit={handleSubmit}
-      className="relative flex w-full gap-2"
+      onSubmit={
+        handleSubmit
+      }
+      className="
+        flex
+        w-full
+        gap-2
+      "
     >
+
       <input
         value={query}
-        onChange={handleChange}
-        placeholder="Search NSE stocks..."
+        onChange={(event) =>
+          setQuery(
+            event.target.value,
+          )
+        }
+        placeholder="
+          Search NSE stock...
+        "
         className="
           w-full
           rounded-lg
-          border border-slate-700
+          border
+          border-slate-700
           bg-slate-900
-          px-4 py-3
+          px-4
+          py-3
           text-white
           outline-none
           focus:border-blue-500
         "
       />
+
 
       <button
         type="submit"
@@ -60,6 +81,7 @@ export function SearchBar({
       >
         Search
       </button>
+
     </form>
   );
 }
