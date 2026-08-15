@@ -5,6 +5,7 @@ export interface UpdateEvent {
   id: number;
   symbol: string;
   event_type: string;
+  priority: string;
   title: string;
   description: string | null;
   source: string | null;

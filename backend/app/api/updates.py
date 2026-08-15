@@ -15,7 +15,6 @@ router = APIRouter(
     tags=["Updates"],
 )
 
-
 @router.get(
     "",
     response_model=list[
@@ -25,6 +24,8 @@ router = APIRouter(
 def get_updates(
     limit: int = 50,
     symbol: str | None = None,
+    event_type: str | None = None,
+    priority: str | None = None,
     db: Session = Depends(get_db),
 ):
 
@@ -33,4 +34,6 @@ def get_updates(
     return service.get_recent(
         limit=limit,
         symbol=symbol,
+        event_type=event_type,
+        priority=priority,
     )

@@ -2,9 +2,14 @@ import logging
 
 from sqlalchemy.orm import Session
 
+from app.services.events.nse_provider import (
+    NSEEventProvider,
+)
+
 from app.services.events.yfinance_provider import (
     YFinanceEventProvider,
 )
+
 from app.services.update_service import (
     UpdateService,
 )
@@ -26,9 +31,10 @@ class EventEngine:
             UpdateService(db)
         )
 
-        self.provider = (
-            YFinanceEventProvider()
-        )
+        self.providers = [
+            NSEEventProvider(),
+            YFinanceEventProvider(),
+        ]
 
     def process_symbol(
         self,
@@ -37,31 +43,43 @@ class EventEngine:
 
         symbol = symbol.strip().upper()
 
-        logger.info(
-            "Checking events for %s",
-            symbol,
-        )
+        all_events = []
 
-        try:
+        for provider in self.providers:
 
-            events = (
-                self.provider.get_events(
+            provider_name = (
+                provider.__class__.__name__
+            )
+
+            try:
+
+                events = provider.get_events(
                     symbol
                 )
-            )
 
-        except Exception:
+                logger.info(
+                    "%s returned %d events "
+                    "for %s",
+                    provider_name,
+                    len(events),
+                    symbol,
+                )
 
-            logger.exception(
-                "Failed retrieving events for %s",
-                symbol,
-            )
+                all_events.extend(
+                    events
+                )
 
-            return []
+            except Exception:
+
+                logger.exception(
+                    "%s failed for %s",
+                    provider_name,
+                    symbol,
+                )
 
         created_events = []
 
-        for event in events:
+        for event in all_events:
 
             try:
 
@@ -69,9 +87,7 @@ class EventEngine:
                     self.update_service
                     .create_event(
                         symbol=event.symbol,
-                        event_type=(
-                            event.event_type
-                        ),
+                        event_type=event.event_type,
                         title=event.title,
                         description=(
                             event.description

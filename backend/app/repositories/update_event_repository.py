@@ -36,6 +36,7 @@ class UpdateEventRepository:
         *,
         symbol: str,
         event_type: str,
+        priority: str,
         title: str,
         description: str | None,
         source: str | None,
@@ -49,6 +50,7 @@ class UpdateEventRepository:
         event = UpdateEvent(
             symbol=symbol.upper(),
             event_type=event_type,
+            priority=priority,
             title=title,
             description=description,
             source=source,
@@ -69,6 +71,8 @@ class UpdateEventRepository:
         self,
         limit: int = 50,
         symbol: str | None = None,
+        event_type: str | None = None,
+        priority: str | None = None,
     ) -> list[UpdateEvent]:
 
         statement = select(
@@ -76,7 +80,17 @@ class UpdateEventRepository:
         ).order_by(
             UpdateEvent.event_time.desc()
         )
+        if event_type:
+            statement = statement.where(
+            UpdateEvent.event_type
+            == event_type.upper()
+        )
 
+        if priority:
+            statement = statement.where(
+            UpdateEvent.priority
+            == priority.upper()
+        )
         if symbol:
             statement = statement.where(
                 UpdateEvent.symbol

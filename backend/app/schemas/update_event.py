@@ -11,6 +11,7 @@ class UpdateEventResponse(BaseModel):
     id: int
     symbol: str
     event_type: str
+    priority: str
     title: str
     description: str | None
     source: str | None

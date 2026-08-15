@@ -33,6 +33,14 @@ class UpdateEvent(Base):
         index=True,
     )
 
+
+    priority: Mapped[str] = mapped_column(
+         String(20),
+         nullable=False,
+         default="LOW",
+         index=True,
+    )
+
     title: Mapped[str] = mapped_column(
         String(500),
         nullable=False,
