@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from app.db.database import Base, SessionLocal, engine
 from app.models.stock import Stock
 from app.models.subscription import Subscription
+from app.models.update_event import UpdateEvent
 
 INITIAL_STOCKS = [
     {

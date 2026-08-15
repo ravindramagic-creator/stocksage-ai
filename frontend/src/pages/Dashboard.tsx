@@ -6,7 +6,8 @@ import { SearchBar } from "../components/SearchBar";
 import { Subscriptions } from "../components/Subscriptions";
 
 import { useMarketSearch } from "../hooks/useMarketSearch";
-
+import { UpdateFeed } from "../components/UpdateFeed";
+import { UpdateStats } from "../components/UpdateStats";
 
 export function Dashboard() {
 
@@ -200,6 +201,37 @@ export function Dashboard() {
 
 
           <Subscriptions />
+
+        </section>
+
+        <section className="mt-8">
+
+          <div className="mb-4">
+
+             <h2
+             className="
+             text-xl
+             font-semibold
+             text-white
+             "
+            >
+            Latest Updates
+            </h2>
+
+            <p
+              className="
+              text-sm
+              text-slate-500
+              "
+              >
+            Important events from your
+              subscribed stocks.
+           </p>
+
+        </div>
+       <UpdateStats />
+
+       <UpdateFeed />
 
         </section>
 

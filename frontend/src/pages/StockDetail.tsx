@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { ChartRangeSelector } from "../components/ChartRangeSelector";
 import { PriceChart } from "../components/PriceChart";
 import { useQuote } from "../hooks/useQuote";
-
+import { UpdateFeed } from "../components/UpdateFeed";
 
 function formatNumber(
   value: number | null,
@@ -220,6 +220,37 @@ export function StockDetail() {
             interval={interval}
           />
         </section>
+
+        <section
+  className="
+    mt-6
+    rounded-2xl
+    border
+    border-slate-800
+    bg-slate-900
+    p-6
+  "
+>
+
+  <div className="mb-5">
+
+    <h2
+      className="
+        text-xl
+        font-semibold
+        text-white
+      "
+    >
+      Latest Updates
+    </h2>
+
+  </div>
+
+  <UpdateFeed
+    symbol={symbol}
+  />
+
+</section>
 
       </div>
     </main>

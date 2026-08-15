@@ -1,4 +1,9 @@
 from contextlib import asynccontextmanager
+import asyncio
+
+from app.api.updates import router as updates_router
+from app.services.update_worker import update_worker
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,12 +26,32 @@ from app.api.stock_search import (
 from app.api.subscriptions import (
     router as subscriptions_router,
 )
-
+from app.api.updates import (
+    router as updates_router,
+)
+from app.api.update_stats import (
+    router as update_stats_router,
+)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Initialize database first
     initialize_database()
-    yield
 
+    # Start StockSage background update worker
+    worker_task = asyncio.create_task(
+        update_worker()
+    )
+
+    try:
+        yield
+    finally:
+        # Stop worker when FastAPI shuts down
+        worker_task.cancel()
+
+        try:
+            await worker_task
+        except asyncio.CancelledError:
+            pass
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -56,4 +81,11 @@ app.include_router(
 
 app.include_router(
     subscriptions_router
+)
+
+app.include_router(
+    updates_router
+)
+app.include_router(
+    update_stats_router
 )
