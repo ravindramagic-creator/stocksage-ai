@@ -16,6 +16,87 @@ interface Props {
   interval: string;
 }
 
+function formatDate(
+  timestamp: string,
+  period: string,
+): string {
+  const date = new Date(timestamp);
+
+  // 1 day - show time
+  if (period === "1d") {
+    return date.toLocaleTimeString(
+      "en-IN",
+      {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      },
+    );
+  }
+
+  // 5 days - show day and month
+  if (period === "5d") {
+    return date.toLocaleDateString(
+      "en-IN",
+      {
+        day: "2-digit",
+        month: "short",
+      },
+    );
+  }
+
+  // 1 month / 3 months / 6 months
+  // Show month and year
+  if (
+    period === "1mo" ||
+    period === "3mo" ||
+    period === "6mo"
+  ) {
+    return date.toLocaleDateString(
+      "en-IN",
+      {
+        month: "short",
+        year: "numeric",
+      },
+    );
+  }
+
+  // 1 year
+  if (period === "1y") {
+    return date.toLocaleDateString(
+      "en-IN",
+      {
+        month: "short",
+        year: "numeric",
+      },
+    );
+  }
+
+  // 5 years / 10 years / MAX
+  // Show only year
+  if (
+    period === "5y" ||
+    period === "10y" ||
+    period === "max"
+  ) {
+    return date.toLocaleDateString(
+      "en-IN",
+      {
+        year: "numeric",
+      },
+    );
+  }
+
+  return date.toLocaleDateString(
+    "en-IN",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    },
+  );
+}
+
 export function PriceChart({
   symbol,
   period,
@@ -48,17 +129,17 @@ export function PriceChart({
   }
 
   const chartData = data.points
-    .filter((point) => point.close !== null)
+    .filter(
+      (point) =>
+        point.close !== null,
+    )
     .map((point) => ({
-      date: new Date(
+      date: formatDate(
         point.timestamp,
-      ).toLocaleDateString(
-        "en-IN",
-        {
-          day: "2-digit",
-          month: "short",
-        },
+        period,
       ),
+
+      timestamp: point.timestamp,
 
       price: point.close,
     }));
@@ -85,17 +166,49 @@ export function PriceChart({
 
           <XAxis
             dataKey="date"
-            tick={{ fontSize: 12 }}
+            tick={{
+              fontSize: 12,
+            }}
           />
 
           <YAxis
             domain={["auto", "auto"]}
-            tick={{ fontSize: 12 }}
+            tick={{
+              fontSize: 12,
+            }}
           />
 
           <Tooltip
+            labelFormatter={(
+              _label,
+              payload,
+            ) => {
+              if (
+                payload &&
+                payload.length > 0
+              ) {
+                const point =
+                  payload[0]
+                    .payload;
+
+                return new Date(
+                  point.timestamp,
+                ).toLocaleDateString(
+                  "en-IN",
+                  {
+                    day: "2-digit",
+                    month: "short",
+                    year: "numeric",
+                  },
+                );
+              }
+
+              return "";
+            }}
             formatter={(value) => [
-              `₹${Number(value).toLocaleString(
+              `₹${Number(
+                value,
+              ).toLocaleString(
                 "en-IN",
                 {
                   maximumFractionDigits: 2,

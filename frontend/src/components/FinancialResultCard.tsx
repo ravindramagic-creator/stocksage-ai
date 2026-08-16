@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 
 import {
-  getLatestFinancialResult,
+  getFinancialResults,
 } from "../api/financialResults";
 
 import type {
   FinancialResult,
 } from "../api/financialResults";
+
 
 interface Props {
   symbol: string;
@@ -26,7 +27,7 @@ function growthClass(
   }
 
   if (value > 0) {
-    return "text-green-400";
+    return "text-emerald-400";
   }
 
   if (value < 0) {
@@ -35,6 +36,7 @@ function growthClass(
 
   return "text-slate-400";
 }
+
 
 function formatGrowth(
   value: number | null | undefined,
@@ -54,16 +56,74 @@ function formatGrowth(
   return `${sign}${value.toFixed(1)}%`;
 }
 
+
+function formatNumber(
+  value: number | null | undefined,
+): string {
+
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(value)
+  ) {
+    return "—";
+  }
+
+  return value.toLocaleString(
+    "en-IN",
+    {
+      maximumFractionDigits: 2,
+    },
+  );
+}
+
+
+function formatPeriod(
+  value: string | null,
+): string {
+
+  if (!value) {
+    return "—";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString(
+    "en-IN",
+    {
+      month: "short",
+      year: "numeric",
+    },
+  );
+}
+
+
+function formatPeriodType(
+  result: FinancialResult,
+): string {
+
+  if (
+    result.period_type
+  ) {
+    return result.period_type;
+  }
+
+  return "Quarter";
+}
+
+
 export function FinancialResultCard({
   symbol,
 }: Props) {
 
   const [
-    result,
-    setResult,
-  ] = useState<FinancialResult | null>(
-    null,
-  );
+    results,
+    setResults,
+  ] = useState<FinancialResult[]>([]);
 
   const [
     loading,
@@ -83,11 +143,14 @@ export function FinancialResultCard({
     setLoading(true);
     setError(false);
 
-    getLatestFinancialResult(symbol)
+    getFinancialResults(
+      symbol,
+      8,
+    )
       .then((data) => {
 
         if (!cancelled) {
-          setResult(data);
+          setResults(data);
         }
 
       })
@@ -133,7 +196,10 @@ export function FinancialResultCard({
   }
 
 
-  if (error || !result) {
+  if (
+    error ||
+    results.length === 0
+  ) {
 
     return (
       <div
@@ -153,22 +219,33 @@ export function FinancialResultCard({
   }
 
 
+  const latestResult =
+    results[0];
+
+
   return (
     <div
       className="
+        overflow-hidden
         rounded-xl
         border
         border-slate-800
         bg-slate-900
-        p-5
       "
     >
+
+      {/* Header */}
 
       <div
         className="
           flex
+          flex-wrap
           items-center
           justify-between
+          gap-3
+          border-b
+          border-slate-800
+          p-5
         "
       >
 
@@ -181,121 +258,603 @@ export function FinancialResultCard({
               text-white
             "
           >
-            Latest Results
+            Financial Results
           </h2>
 
           <p
             className="
+              mt-1
               text-sm
               text-slate-400
             "
           >
-            {result.symbol}
+            Quarterly financial performance
           </p>
 
         </div>
 
 
-        {result.market_view && (
+        {latestResult.market_view && (
+
           <span
             className="
               rounded-full
-              bg-green-500/10
+              bg-blue-500/10
               px-3
               py-1
               text-xs
               font-medium
-              text-green-400
+              text-blue-400
             "
           >
-            {result.market_view}
+            {latestResult.market_view}
           </span>
+
         )}
 
       </div>
 
 
-      {result.summary && (
-        <p
+      {/* Latest Result Summary */}
+
+      {latestResult.summary && (
+
+        <div
           className="
-            mt-4
-            text-sm
-            text-slate-300
+            border-b
+            border-slate-800
+            px-5
+            py-4
           "
         >
-          {result.summary}
-        </p>
+
+          <p
+            className="
+              text-sm
+              leading-6
+              text-slate-300
+            "
+          >
+            {latestResult.summary}
+          </p>
+
+        </div>
+
       )}
 
 
-      <div
-        className="
-          mt-5
-          grid
-          grid-cols-2
-          gap-3
-          md:grid-cols-4
-        "
-      >
+      {/* Desktop Table */}
 
-        <Metric
-          label="Revenue YoY"
-          value={formatGrowth(
-            result.revenue_yoy,
-          )}
-          className={growthClass(
-            result.revenue_yoy,
-          )}
-        />
+      <div className="hidden overflow-x-auto md:block">
 
-        <Metric
-          label="EBITDA YoY"
-          value={formatGrowth(
-            result.ebitda_yoy,
-          )}
-          className={growthClass(
-            result.ebitda_yoy,
-          )}
-        />
+        <table
+          className="
+            w-full
+            min-w-[1000px]
+            text-left
+          "
+        >
 
-        <Metric
-          label="PAT YoY"
-          value={formatGrowth(
-            result.pat_yoy,
-          )}
-          className={growthClass(
-            result.pat_yoy,
-          )}
-        />
+          <thead>
 
-        <Metric
-          label="EPS"
-          value={
-            result.eps !== null
-              ? Number(result.eps).toFixed(2) 
-              : "—"
-          }
-          className="text-white"
-        />
+            <tr
+              className="
+                border-b
+                border-slate-800
+                bg-slate-950
+              "
+            >
+
+              <th
+                className="
+                  px-5
+                  py-3
+                  text-xs
+                  font-medium
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                Period
+              </th>
+
+              <th
+                className="
+                  px-4
+                  py-3
+                  text-right
+                  text-xs
+                  font-medium
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                Revenue
+              </th>
+
+              <th
+                className="
+                  px-4
+                  py-3
+                  text-right
+                  text-xs
+                  font-medium
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                Rev YoY
+              </th>
+
+              <th
+                className="
+                  px-4
+                  py-3
+                  text-right
+                  text-xs
+                  font-medium
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                EBITDA
+              </th>
+
+              <th
+                className="
+                  px-4
+                  py-3
+                  text-right
+                  text-xs
+                  font-medium
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                EBITDA YoY
+              </th>
+
+              <th
+                className="
+                  px-4
+                  py-3
+                  text-right
+                  text-xs
+                  font-medium
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                PAT
+              </th>
+
+              <th
+                className="
+                  px-4
+                  py-3
+                  text-right
+                  text-xs
+                  font-medium
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                PAT YoY
+              </th>
+
+              <th
+                className="
+                  px-4
+                  py-3
+                  text-right
+                  text-xs
+                  font-medium
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                EPS
+              </th>
+
+            </tr>
+
+          </thead>
+
+
+          <tbody>
+
+            {results.map(
+              (result) => (
+
+                <tr
+                  key={result.id}
+                  className="
+                    border-b
+                    border-slate-800/70
+                    transition-colors
+                    hover:bg-slate-800/40
+                  "
+                >
+
+                  {/* Period */}
+
+                  <td
+                    className="
+                      px-5
+                      py-4
+                    "
+                  >
+
+                    <div
+                      className="
+                        font-medium
+                        text-white
+                      "
+                    >
+                      {formatPeriod(
+                        result.period_ended,
+                      )}
+                    </div>
+
+                    <div
+                      className="
+                        mt-1
+                        text-xs
+                        text-slate-500
+                      "
+                    >
+                      {formatPeriodType(
+                        result,
+                      )}
+
+                      {result.consolidated
+                        ? " • Consolidated"
+                        : " • Standalone"}
+                    </div>
+
+                  </td>
+
+
+                  {/* Revenue */}
+
+                  <td
+                    className="
+                      px-4
+                      py-4
+                      text-right
+                      font-medium
+                      text-slate-200
+                    "
+                  >
+                    {formatNumber(
+                      result.revenue,
+                    )}
+                  </td>
+
+
+                  {/* Revenue YoY */}
+
+                  <td
+                    className={`
+                      px-4
+                      py-4
+                      text-right
+                      font-medium
+                      ${growthClass(
+                        result.revenue_yoy,
+                      )}
+                    `}
+                  >
+                    {formatGrowth(
+                      result.revenue_yoy,
+                    )}
+                  </td>
+
+
+                  {/* EBITDA */}
+
+                  <td
+                    className="
+                      px-4
+                      py-4
+                      text-right
+                      font-medium
+                      text-slate-200
+                    "
+                  >
+                    {formatNumber(
+                      result.ebitda,
+                    )}
+                  </td>
+
+
+                  {/* EBITDA YoY */}
+
+                  <td
+                    className={`
+                      px-4
+                      py-4
+                      text-right
+                      font-medium
+                      ${growthClass(
+                        result.ebitda_yoy,
+                      )}
+                    `}
+                  >
+                    {formatGrowth(
+                      result.ebitda_yoy,
+                    )}
+                  </td>
+
+
+                  {/* PAT */}
+
+                  <td
+                    className="
+                      px-4
+                      py-4
+                      text-right
+                      font-medium
+                      text-slate-200
+                    "
+                  >
+                    {formatNumber(
+                      result.pat,
+                    )}
+                  </td>
+
+
+                  {/* PAT YoY */}
+
+                  <td
+                    className={`
+                      px-4
+                      py-4
+                      text-right
+                      font-medium
+                      ${growthClass(
+                        result.pat_yoy,
+                      )}
+                    `}
+                  >
+                    {formatGrowth(
+                      result.pat_yoy,
+                    )}
+                  </td>
+
+
+                  {/* EPS */}
+
+                  <td
+                    className="
+                      px-4
+                      py-4
+                      text-right
+                      font-semibold
+                      text-white
+                    "
+                  >
+                    {result.eps !== null &&
+                    result.eps !== undefined
+                      ? Number(
+                          result.eps,
+                        ).toFixed(2)
+                      : "—"}
+                  </td>
+
+                </tr>
+
+              ),
+            )}
+
+          </tbody>
+
+        </table>
 
       </div>
 
 
-      {result.source_url && (
-        <a
-          href={result.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
+      {/* Mobile Cards */}
+
+      <div
+        className="
+          divide-y
+          divide-slate-800
+          md:hidden
+        "
+      >
+
+        {results.map(
+          (result) => (
+
+            <div
+              key={result.id}
+              className="
+                p-5
+              "
+            >
+
+              <div
+                className="
+                  mb-4
+                  flex
+                  items-start
+                  justify-between
+                  gap-3
+                "
+              >
+
+                <div>
+
+                  <div
+                    className="
+                      font-semibold
+                      text-white
+                    "
+                  >
+                    {formatPeriod(
+                      result.period_ended,
+                    )}
+                  </div>
+
+                  <div
+                    className="
+                      mt-1
+                      text-xs
+                      text-slate-500
+                    "
+                  >
+                    {formatPeriodType(
+                      result,
+                    )}
+
+                    {result.consolidated
+                      ? " • Consolidated"
+                      : " • Standalone"}
+                  </div>
+
+                </div>
+
+
+                <div
+                  className="
+                    text-right
+                  "
+                >
+
+                  <div
+                    className="
+                      text-xs
+                      text-slate-500
+                    "
+                  >
+                    EPS
+                  </div>
+
+                  <div
+                    className="
+                      font-semibold
+                      text-white
+                    "
+                  >
+                    {result.eps !== null &&
+                    result.eps !== undefined
+                      ? Number(
+                          result.eps,
+                        ).toFixed(2)
+                      : "—"}
+                  </div>
+
+                </div>
+
+              </div>
+
+
+              <div
+                className="
+                  grid
+                  grid-cols-2
+                  gap-3
+                "
+              >
+
+                <MobileMetric
+                  label="Revenue"
+                  value={formatNumber(
+                    result.revenue,
+                  )}
+                />
+
+                <MobileMetric
+                  label="Revenue YoY"
+                  value={formatGrowth(
+                    result.revenue_yoy,
+                  )}
+                  className={growthClass(
+                    result.revenue_yoy,
+                  )}
+                />
+
+                <MobileMetric
+                  label="EBITDA"
+                  value={formatNumber(
+                    result.ebitda,
+                  )}
+                />
+
+                <MobileMetric
+                  label="EBITDA YoY"
+                  value={formatGrowth(
+                    result.ebitda_yoy,
+                  )}
+                  className={growthClass(
+                    result.ebitda_yoy,
+                  )}
+                />
+
+                <MobileMetric
+                  label="PAT"
+                  value={formatNumber(
+                    result.pat,
+                  )}
+                />
+
+                <MobileMetric
+                  label="PAT YoY"
+                  value={formatGrowth(
+                    result.pat_yoy,
+                  )}
+                  className={growthClass(
+                    result.pat_yoy,
+                  )}
+                />
+
+              </div>
+
+            </div>
+
+          ),
+        )}
+
+      </div>
+
+
+      {/* Source */}
+
+      {latestResult.source_url && (
+
+        <div
           className="
-            mt-4
-            inline-block
-            text-sm
-            text-blue-400
-            hover:text-blue-300
+            border-t
+            border-slate-800
+            px-5
+            py-4
           "
         >
-          View filing →
-        </a>
+
+          <a
+            href={latestResult.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="
+              text-sm
+              text-blue-400
+              hover:text-blue-300
+            "
+          >
+            View latest filing →
+          </a>
+
+        </div>
+
       )}
 
     </div>
@@ -303,18 +862,18 @@ export function FinancialResultCard({
 }
 
 
-interface MetricProps {
+interface MobileMetricProps {
   label: string;
   value: string;
-  className: string;
+  className?: string;
 }
 
 
-function Metric({
+function MobileMetric({
   label,
   value,
-  className,
-}: MetricProps) {
+  className = "text-slate-200",
+}: MobileMetricProps) {
 
   return (
     <div
@@ -337,7 +896,6 @@ function Metric({
       <div
         className={`
           mt-1
-          text-lg
           font-semibold
           ${className}
         `}

@@ -38,8 +38,8 @@ export interface FinancialResult {
   created_at: string;
 }
 
-
-const API_BASE_URL = "http://127.0.0.1:8000";
+const API_BASE_URL =
+  "http://127.0.0.1:8000";
 
 
 export async function getLatestFinancialResult(
@@ -53,6 +53,31 @@ export async function getLatestFinancialResult(
   if (!response.ok) {
     throw new Error(
       `Failed to fetch financial result: ${response.status}`,
+    );
+  }
+
+  return response.json();
+}
+
+
+/**
+ * Fetch multiple recent financial results.
+ *
+ * The backend returns the most recent
+ * results first.
+ */
+export async function getFinancialResults(
+  symbol: string,
+  limit: number = 8,
+): Promise<FinancialResult[]> {
+
+  const response = await fetch(
+    `${API_BASE_URL}/financial-results?symbol=${encodeURIComponent(symbol)}&limit=${limit}`,
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Failed to fetch financial results: ${response.status}`,
     );
   }
 

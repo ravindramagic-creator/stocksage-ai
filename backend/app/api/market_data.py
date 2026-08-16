@@ -51,7 +51,6 @@ def get_quote(symbol: str):
 
     return quote
 
-
 @router.get(
     "/history/{symbol}",
     response_model=HistoricalPrices,
@@ -61,7 +60,6 @@ def get_history(
     period: str = "1mo",
     interval: str = "1d",
 ):
-
     allowed_periods = {
         "1d",
         "5d",
@@ -69,6 +67,9 @@ def get_history(
         "3mo",
         "6mo",
         "1y",
+        "5y",
+        "10y",
+        "max",
     }
 
     allowed_intervals = {
@@ -102,7 +103,6 @@ def get_history(
             period=period,
             interval=interval,
         )
-
     except Exception as exc:
         raise HTTPException(
             status_code=502,
