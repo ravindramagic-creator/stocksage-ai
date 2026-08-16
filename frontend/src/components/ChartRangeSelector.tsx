@@ -37,6 +37,21 @@ const ranges = [
     period: "1y",
     interval: "1d",
   },
+  {
+    label: "5Y",
+    period: "5y",
+    interval: "1wk",
+  },
+  {
+    label: "10Y",
+    period: "10y",
+    interval: "1mo",
+  },
+  {
+    label: "MAX",
+    period: "max",
+    interval: "1mo",
+  },
 ];
 
 export function ChartRangeSelector({

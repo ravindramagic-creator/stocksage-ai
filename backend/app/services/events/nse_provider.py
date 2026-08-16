@@ -64,14 +64,15 @@ class NSEEventProvider(EventProvider):
 
             response.raise_for_status()
 
-        except requests.RequestException:
+        except requests.RequestException as exc:
 
             logger.warning(
-                "Unable to initialize NSE session"
+                "Unable to initialize NSE session: %s",
+                exc,
             )
 
     # -------------------------------------------------
-    # HTTP GET
+    # HTTP
     # -------------------------------------------------
 
     def _get(
@@ -145,30 +146,30 @@ class NSEEventProvider(EventProvider):
         except Exception:
 
             logger.exception(
-                "Unexpected NSE announcement error "
-                "for %s",
+                "Unexpected NSE error for %s",
                 symbol,
             )
 
             return []
 
         if not isinstance(data, list):
+
             logger.warning(
-                "Unexpected NSE announcement response "
-                "for %s: %s",
+                "Unexpected NSE response for %s: %s",
                 symbol,
                 type(data),
             )
+
             return []
 
-        events: list[MarketEvent] = []
+        events = []
 
         for item in data:
 
             if not isinstance(item, dict):
                 continue
 
-            event = self._announcement_to_event(
+            event = self._convert_announcement(
                 symbol,
                 item,
             )
@@ -179,10 +180,10 @@ class NSEEventProvider(EventProvider):
         return events
 
     # -------------------------------------------------
-    # CONVERT ANNOUNCEMENT
+    # CONVERT NSE ANNOUNCEMENT
     # -------------------------------------------------
 
-    def _announcement_to_event(
+    def _convert_announcement(
         self,
         symbol: str,
         item: dict[str, Any],
@@ -209,11 +210,11 @@ class NSEEventProvider(EventProvider):
             broadcast_date
         )
 
-        event_type = self._classify_subject(
+        event_type = self._classify(
             subject
         )
 
-        document_url = (
+        source_url = (
             item.get("attchmntFile")
             or item.get("attachment")
             or item.get("fileUrl")
@@ -235,17 +236,17 @@ class NSEEventProvider(EventProvider):
                 f"{subject}"
             ),
             source="NSE India",
-            source_url=document_url,
+            source_url=source_url,
             event_key=event_key,
             event_time=event_time,
         )
 
     # -------------------------------------------------
-    # CLASSIFY ANNOUNCEMENT
+    # CLASSIFICATION
     # -------------------------------------------------
 
     @staticmethod
-    def _classify_subject(
+    def _classify(
         subject: str,
     ) -> str:
 
@@ -253,46 +254,53 @@ class NSEEventProvider(EventProvider):
 
         if any(
             word in text
-            for word in [
+            for word in (
                 "financial results",
                 "financial result",
                 "quarterly results",
-                "result",
-            ]
+                "results declared",
+                "result declared",
+            )
         ):
             return "RESULT"
 
         if any(
             word in text
-            for word in [
+            for word in (
                 "bagging",
                 "order",
                 "contract",
-                "received order",
                 "work order",
-            ]
+                "received order",
+            )
         ):
             return "ORDER"
 
         if any(
             word in text
-            for word in [
+            for word in (
                 "board meeting",
                 "board of directors",
-            ]
+            )
         ):
             return "BOARD_MEETING"
 
         if "dividend" in text:
             return "DIVIDEND"
 
-        if "split" in text:
-            return "SPLIT"
-
         if "bonus" in text:
             return "BONUS"
 
-        if "acquisition" in text:
+        if "split" in text:
+            return "SPLIT"
+
+        if any(
+            word in text
+            for word in (
+                "acquisition",
+                "acquire",
+            )
+        ):
             return "ACQUISITION"
 
         if "press release" in text:
@@ -361,21 +369,6 @@ class NSEEventProvider(EventProvider):
         self,
         symbol: str,
     ) -> list[MarketEvent]:
-
-        symbol = self._normalize_symbol(
-            symbol
-        )
-
-        # IMPORTANT:
-        #
-        # Do NOT call get_results() here.
-        #
-        # The old /api/corporate-financial-results
-        # endpoint is returning HTTP 404.
-        #
-        # Financial-result announcements will be
-        # picked up when NSE publishes them through
-        # the corporate-announcements feed.
 
         return self.get_announcements(
             symbol

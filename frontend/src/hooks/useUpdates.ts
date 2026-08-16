@@ -5,20 +5,25 @@ import { getUpdates } from "../api/updates";
 
 export function useUpdates(
   symbol?: string,
+  eventType?: string,
 ) {
 
   return useQuery({
-
     queryKey: [
       "updates",
-      symbol ?? "all",
+      symbol,
+      eventType,
     ],
 
     queryFn: () =>
-      getUpdates(symbol),
+      getUpdates({
+        symbol,
+        eventType,
+      }),
+  
+     refetchInterval: 60_000,
 
-    refetchInterval: 60_000,
-
-    staleTime: 30_000,
+     staleTime: 30_000,
   });
 }
+

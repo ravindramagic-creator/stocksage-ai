@@ -14,7 +14,10 @@ from app.services.events.event_priority import (
 class UpdateService:
 
     def __init__(self, db: Session):
-        self.repository = UpdateEventRepository(db)
+
+        self.repository = (
+            UpdateEventRepository(db)
+        )
 
     def create_event(
         self,
@@ -30,18 +33,18 @@ class UpdateService:
         event_key: str,
         event_time: datetime | None = None,
     ):
-        # Don't create the same event twice.
-        if self.repository.exists(event_key):
+
+        if self.repository.exists(
+            event_key
+        ):
             return None
 
-        # Use current UTC time when the provider
-        # doesn't supply an event time.
         if event_time is None:
+
             event_time = datetime.now(
                 timezone.utc
             )
 
-        # Determine event priority.
         priority = get_priority(
             event_type
         )
@@ -67,6 +70,7 @@ class UpdateService:
         event_type: str | None = None,
         priority: str | None = None,
     ):
+
         limit = min(
             max(limit, 1),
             200,

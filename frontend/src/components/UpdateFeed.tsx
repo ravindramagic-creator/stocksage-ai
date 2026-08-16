@@ -3,10 +3,12 @@ import { Link } from "react-router-dom";
 import { useUpdates } from "../hooks/useUpdates";
 
 
-interface Props {
-  symbol?: string;
-}
+interface UpdateFeedProps {
 
+  symbol?: string;
+
+  eventType?: string;
+}
 
 function formatTime(
   value: string,
@@ -87,14 +89,17 @@ function priorityClass(
 
 export function UpdateFeed({
   symbol,
-}: Props) {
+  eventType,
+}: UpdateFeedProps) {
 
-  const {
+const {
     data,
     isLoading,
     isError,
-  } = useUpdates(symbol);
-
+  } = useUpdates(
+    symbol,
+    eventType,
+  );
 
   if (isLoading) {
     return (

@@ -7,17 +7,14 @@ EVENT_PRIORITY = {
     "DIVIDEND": "MEDIUM",
     "BOARD_MEETING": "MEDIUM",
     "PRESS_RELEASE": "MEDIUM",
-    "NEWS": "LOW",
     "CORPORATE": "LOW",
+    "NEWS": "LOW",
     "PRICE_MOVE": "HIGH",
 }
 
 
-def get_priority(
-    event_type: str,
-) -> str:
-
+def get_priority(event_type: str) -> str:
     return EVENT_PRIORITY.get(
-        event_type,
+        event_type.upper(),
         "LOW",
     )

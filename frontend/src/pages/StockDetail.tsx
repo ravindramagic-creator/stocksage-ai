@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { ChartRangeSelector } from "../components/ChartRangeSelector";
 import { PriceChart } from "../components/PriceChart";
 import { useQuote } from "../hooks/useQuote";
 import { UpdateFeed } from "../components/UpdateFeed";
@@ -20,7 +19,6 @@ function formatNumber(
     },
   );
 }
-
 
 function formatVolume(
   value: number | null,
@@ -43,7 +41,6 @@ function formatVolume(
 
   return value.toString();
 }
-
 
 export function StockDetail() {
   const {
@@ -90,6 +87,7 @@ export function StockDetail() {
     <main className="min-h-screen bg-slate-950">
       <div className="mx-auto max-w-6xl px-6 py-8">
 
+        {/* Back */}
         <Link
           to="/"
           className="text-sm text-blue-400 hover:text-blue-300"
@@ -97,6 +95,7 @@ export function StockDetail() {
           ← Back to Dashboard
         </Link>
 
+        {/* Header */}
         <header className="mb-6 mt-6">
           <div className="text-sm text-slate-500">
             NSE
@@ -105,8 +104,13 @@ export function StockDetail() {
           <h1 className="text-3xl font-bold text-white">
             {quote.symbol}
           </h1>
+
+          <p className="mt-1 text-slate-400">
+            Stock details and market updates
+          </p>
         </header>
 
+        {/* Stock information */}
         <section
           className="
             rounded-2xl
@@ -143,9 +147,11 @@ export function StockDetail() {
 
           </div>
 
+          {/* Metrics */}
           <div
             className="
-              mt-8 grid
+              mt-8
+              grid
               grid-cols-2
               gap-4
               md:grid-cols-5
@@ -188,6 +194,10 @@ export function StockDetail() {
           </div>
         </section>
 
+        {/* ===================================================== */}
+        {/* PRICE HISTORY */}
+        {/* ===================================================== */}
+
         <section
           className="
             mt-6
@@ -197,72 +207,433 @@ export function StockDetail() {
             p-6
           "
         >
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-4">
-            <h2 className="text-xl font-semibold text-white">
-              Price History
-            </h2>
 
-            <ChartRangeSelector
-              value={period}
-              onChange={(
-                newPeriod,
-                newInterval,
-              ) => {
-                setPeriod(newPeriod);
-                setInterval(newInterval);
+          {/* Title */}
+          <h2
+            className="
+              mb-5
+              text-xl
+              font-semibold
+              text-white
+            "
+          >
+            Price History
+          </h2>
+
+          {/* ================================================= */}
+          {/* RANGE BUTTONS */}
+          {/* ================================================= */}
+
+          <div
+            className="
+              mb-6
+              flex
+              w-full
+              flex-wrap
+              gap-2
+            "
+          >
+
+            {/* 1 DAY */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("1d");
+                setInterval("5m");
               }}
-            />
+              className={
+                period === "1d"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              1D
+            </button>
+
+            {/* 5 DAYS */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("5d");
+                setInterval("15m");
+              }}
+              className={
+                period === "5d"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              5D
+            </button>
+
+            {/* 1 MONTH */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("1mo");
+                setInterval("1d");
+              }}
+              className={
+                period === "1mo"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              1M
+            </button>
+
+            {/* 3 MONTHS */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("3mo");
+                setInterval("1d");
+              }}
+              className={
+                period === "3mo"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              3M
+            </button>
+
+            {/* 6 MONTHS */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("6mo");
+                setInterval("1d");
+              }}
+              className={
+                period === "6mo"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              6M
+            </button>
+
+            {/* 1 YEAR */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("1y");
+                setInterval("1d");
+              }}
+              className={
+                period === "1y"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              1Y
+            </button>
+
+            {/* 5 YEARS */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("5y");
+                setInterval("1wk");
+              }}
+              className={
+                period === "5y"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              5Y
+            </button>
+
+            {/* 10 YEARS */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("10y");
+                setInterval("1mo");
+              }}
+              className={
+                period === "10y"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              10Y
+            </button>
+
+            {/* MAX */}
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod("max");
+                setInterval("1mo");
+              }}
+              className={
+                period === "max"
+                  ? `
+                    rounded-lg
+                    border
+                    border-blue-500
+                    bg-blue-600
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-white
+                  `
+                  : `
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-800
+                    px-4
+                    py-2
+                    text-sm
+                    font-medium
+                    text-slate-300
+                    hover:bg-slate-700
+                    hover:text-white
+                  `
+              }
+            >
+              MAX
+            </button>
+
           </div>
+
+          {/* ================================================= */}
+          {/* PRICE CHART */}
+          {/* ================================================= */}
 
           <PriceChart
             symbol={symbol}
             period={period}
             interval={interval}
           />
+
         </section>
 
+        {/* ===================================================== */}
+        {/* LATEST UPDATES */}
+        {/* ===================================================== */}
+
         <section
-  className="
-    mt-6
-    rounded-2xl
-    border
-    border-slate-800
-    bg-slate-900
-    p-6
-  "
->
+          className="
+            mt-6
+            rounded-2xl
+            border
+            border-slate-800
+            bg-slate-900
+            p-6
+          "
+        >
 
-  <div className="mb-5">
+          <div className="mb-5">
 
-    <h2
-      className="
-        text-xl
-        font-semibold
-        text-white
-      "
-    >
-      Latest Updates
-    </h2>
+            <h2
+              className="
+                text-xl
+                font-semibold
+                text-white
+              "
+            >
+              Latest Updates
+            </h2>
 
-  </div>
+          </div>
 
-  <UpdateFeed
-    symbol={symbol}
-  />
+          <UpdateFeed
+            symbol={symbol}
+          />
 
-</section>
+        </section>
 
       </div>
     </main>
   );
 }
 
-
 interface MetricProps {
   label: string;
   value: string;
 }
-
 
 function Metric({
   label,

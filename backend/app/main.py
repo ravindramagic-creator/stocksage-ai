@@ -32,6 +32,9 @@ from app.api.updates import (
 from app.api.update_stats import (
     router as update_stats_router,
 )
+from app.api.financial_results import (
+    router as financial_results_router,
+)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Initialize database first
@@ -88,4 +91,7 @@ app.include_router(
 )
 app.include_router(
     update_stats_router
+)
+app.include_router(
+    financial_results_router
 )

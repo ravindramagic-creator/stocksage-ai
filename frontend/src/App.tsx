@@ -1,16 +1,20 @@
 import {
   BrowserRouter,
-  Route,
   Routes,
+  Route,
 } from "react-router-dom";
 
 import { Dashboard } from "./pages/Dashboard";
-import { StockDetail } from "./pages/StockDetail";
+import { StockPage } from "./pages/StockPage";
+
 
 function App() {
+
   return (
     <BrowserRouter>
+
       <Routes>
+
         <Route
           path="/"
           element={<Dashboard />}
@@ -18,11 +22,14 @@ function App() {
 
         <Route
           path="/stock/:symbol"
-          element={<StockDetail />}
+          element={<StockPage />}
         />
+
       </Routes>
+
     </BrowserRouter>
   );
 }
+
 
 export default App;

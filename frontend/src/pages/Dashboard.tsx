@@ -4,10 +4,11 @@ import { MarketSummary } from "../components/MarketSummary";
 import { MarketSearchResults } from "../components/MarketSearchResults";
 import { SearchBar } from "../components/SearchBar";
 import { Subscriptions } from "../components/Subscriptions";
-
-import { useMarketSearch } from "../hooks/useMarketSearch";
 import { UpdateFeed } from "../components/UpdateFeed";
 import { UpdateStats } from "../components/UpdateStats";
+
+import { useMarketSearch } from "../hooks/useMarketSearch";
+
 
 export function Dashboard() {
 
@@ -43,6 +44,8 @@ export function Dashboard() {
         "
       >
 
+        {/* Header */}
+
         <header className="mb-8">
 
           <h1
@@ -68,6 +71,8 @@ export function Dashboard() {
         </header>
 
 
+        {/* Indian Market */}
+
         <section className="mb-8">
 
           <div className="mb-4">
@@ -88,6 +93,8 @@ export function Dashboard() {
 
         </section>
 
+
+        {/* Find a Stock */}
 
         <section className="mb-8">
 
@@ -173,6 +180,8 @@ export function Dashboard() {
         </section>
 
 
+        {/* My Subscriptions */}
+
         <section>
 
           <div className="mb-4">
@@ -204,36 +213,74 @@ export function Dashboard() {
 
         </section>
 
+
+        {/* Financial Results */}
+
         <section className="mt-8">
 
           <div className="mb-4">
 
-             <h2
-             className="
-             text-xl
-             font-semibold
-             text-white
-             "
+            <h2
+              className="
+                text-xl
+                font-semibold
+                text-white
+              "
             >
-            Latest Updates
+              Latest Financial Results
             </h2>
 
             <p
               className="
-              text-sm
-              text-slate-500
+                text-sm
+                text-slate-500
               "
-              >
-            Important events from your
-              subscribed stocks.
-           </p>
+            >
+              Latest quarterly financial
+              performance.
+            </p>
 
-        </div>
-       <UpdateStats />
+          </div>
 
-       <UpdateFeed />
 
         </section>
+
+
+        {/* Latest Updates */}
+
+        <section className="mt-8">
+
+          <div className="mb-4">
+
+            <h2
+              className="
+                text-xl
+                font-semibold
+                text-white
+              "
+            >
+              Latest Updates
+            </h2>
+
+            <p
+              className="
+                text-sm
+                text-slate-500
+              "
+            >
+              Important events from your
+              subscribed stocks.
+            </p>
+
+          </div>
+
+
+          <UpdateStats />
+
+          <UpdateFeed />
+
+        </section>
+
 
       </div>
 
