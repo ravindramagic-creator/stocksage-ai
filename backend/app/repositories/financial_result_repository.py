@@ -3,23 +3,19 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.financial_result import (
-    FinancialResult,
-)
+from app.models.financial_result import FinancialResult
 
 
 class FinancialResultRepository:
 
     def __init__(self, db: Session):
-
         self.db = db
 
     def create(
         self,
-        *,
         symbol: str,
         company_name: str | None,
-        period_ended: date | None,
+        period_ended: date,
         period_type: str | None,
         consolidated: bool,
         revenue,
@@ -38,7 +34,7 @@ class FinancialResultRepository:
         source: str | None,
         source_url: str | None,
         broadcast_date,
-    ):
+    ) -> FinancialResult:
 
         result = FinancialResult(
             symbol=symbol.upper(),
@@ -46,34 +42,61 @@ class FinancialResultRepository:
             period_ended=period_ended,
             period_type=period_type,
             consolidated=consolidated,
+
             revenue=revenue,
             revenue_yoy=revenue_yoy,
             revenue_qoq=revenue_qoq,
+
             ebitda=ebitda,
             ebitda_yoy=ebitda_yoy,
             ebitda_qoq=ebitda_qoq,
+
             pat=pat,
             pat_yoy=pat_yoy,
             pat_qoq=pat_qoq,
+
             eps=eps,
             eps_yoy=eps_yoy,
+
             market_view=market_view,
             summary=summary,
+
             source=source,
             source_url=source_url,
+
             broadcast_date=broadcast_date,
         )
 
         self.db.add(result)
-        self.db.commit()
-        self.db.refresh(result)
+        self.db.flush()
 
         return result
+
+    def get_by_period(
+        self,
+        symbol: str,
+        period: date,
+    ) -> FinancialResult | None:
+
+        statement = (
+            select(FinancialResult)
+            .where(
+                FinancialResult.symbol
+                == symbol.upper(),
+                FinancialResult.period_ended
+                == period,
+            )
+            .limit(1)
+        )
+
+        return self.db.scalars(
+            statement
+        ).first()
 
     def get_latest(
         self,
         symbol: str,
-    ):
+    ) -> FinancialResult | None:
 
         statement = (
             select(FinancialResult)
@@ -95,23 +118,49 @@ class FinancialResultRepository:
         self,
         symbol: str | None = None,
         limit: int = 20,
-    ):
+    ) -> list[FinancialResult]:
 
         statement = select(
             FinancialResult
-        ).order_by(
-            FinancialResult.period_ended.desc()
         )
 
         if symbol:
-
             statement = statement.where(
                 FinancialResult.symbol
                 == symbol.upper()
             )
 
-        statement = statement.limit(
-            min(max(limit, 1), 100)
+        statement = (
+            statement
+            .order_by(
+                FinancialResult.period_ended.desc()
+            )
+            .limit(limit)
+        )
+
+        return list(
+            self.db.scalars(
+                statement
+            ).all()
+        )
+
+    def get_all(
+        self,
+        symbol: str | None = None,
+    ) -> list[FinancialResult]:
+
+        statement = select(
+            FinancialResult
+        )
+
+        if symbol:
+            statement = statement.where(
+                FinancialResult.symbol
+                == symbol.upper()
+            )
+
+        statement = statement.order_by(
+            FinancialResult.period_ended.desc()
         )
 
         return list(
