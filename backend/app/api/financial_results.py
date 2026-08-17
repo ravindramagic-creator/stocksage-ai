@@ -3,6 +3,7 @@ from fastapi import (
     Depends,
     HTTPException,
 )
+
 from sqlalchemy.orm import Session
 
 from app.db.database import get_db
@@ -37,35 +38,42 @@ def get_financial_results(
     limit: int = 20,
     db: Session = Depends(get_db),
 ):
-    service = FinancialResultService(db)
+
+    limit = max(
+        1,
+        min(limit, 20),
+    )
+
+    service = FinancialResultService(
+        db
+    )
 
     results = service.get_recent(
         symbol=symbol,
         limit=limit,
     )
 
-    # Automatically fetch from Yahoo when
-    # this stock has no financial results
-    # stored in our database.
-    if (
-        symbol
-        and not results
-    ):
+    if symbol and not results:
+
         ingestion = (
             FinancialResultIngestion(db)
         )
 
         try:
+
             ingestion.ingest(
                 symbol,
-                min(limit, 20),
+                limit,
             )
+
         except Exception as exc:
+
             raise HTTPException(
                 status_code=502,
                 detail=(
-                    "Unable to fetch financial "
-                    "results from Yahoo Finance"
+                    "Unable to fetch "
+                    "financial results "
+                    "from NSE"
                 ),
             ) from exc
 
@@ -88,25 +96,37 @@ def sync_financial_results(
     limit: int = 8,
     db: Session = Depends(get_db),
 ):
+
+    limit = max(
+        1,
+        min(limit, 20),
+    )
+
     ingestion = (
         FinancialResultIngestion(db)
     )
 
     try:
+
         ingestion.ingest(
             symbol,
-            min(limit, 20),
+            limit,
         )
+
     except Exception as exc:
+
         raise HTTPException(
             status_code=502,
             detail=(
-                "Unable to fetch financial "
-                "results from Yahoo Finance"
+                "Unable to fetch "
+                "financial results "
+                "from NSE"
             ),
         ) from exc
 
-    service = FinancialResultService(db)
+    service = FinancialResultService(
+        db
+    )
 
     return service.get_recent(
         symbol=symbol,
@@ -122,29 +142,36 @@ def get_latest_result(
     symbol: str,
     db: Session = Depends(get_db),
 ):
-    service = FinancialResultService(db)
+
+    service = FinancialResultService(
+        db
+    )
 
     result = service.get_latest(
         symbol
     )
 
-    # Lazy-fetch if database is empty.
     if result is None:
+
         ingestion = (
             FinancialResultIngestion(db)
         )
 
         try:
+
             ingestion.ingest(
                 symbol,
                 8,
             )
+
         except Exception as exc:
+
             raise HTTPException(
                 status_code=502,
                 detail=(
-                    "Unable to fetch financial "
-                    "results from Yahoo Finance"
+                    "Unable to fetch "
+                    "financial results "
+                    "from NSE"
                 ),
             ) from exc
 
@@ -153,6 +180,7 @@ def get_latest_result(
         )
 
     if result is None:
+
         raise HTTPException(
             status_code=404,
             detail=(

@@ -2,71 +2,36 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 from decimal import Decimal
-from typing import Any
-
-import yfinance as yf
 
 from sqlalchemy.orm import Session
 
 from app.repositories.financial_result_repository import (
     FinancialResultRepository,
 )
+from app.services.nse_financial_result_provider import (
+    NSEFinancialResultProvider,
+)
 
 
 class FinancialResultIngestion:
 
-    def __init__(self, db: Session):
+    def __init__(
+        self,
+        db: Session,
+    ):
         self.db = db
-        self.repository = FinancialResultRepository(db)
 
-    @staticmethod
-    def yahoo_symbol(symbol: str) -> str:
-        symbol = symbol.upper().strip()
+        self.repository = (
+            FinancialResultRepository(db)
+        )
 
-        if symbol.endswith(".NS"):
-            return symbol
+        self.provider = (
+            NSEFinancialResultProvider()
+        )
 
-        return f"{symbol}.NS"
-
-    @staticmethod
-    def to_decimal(
-        value: Any,
-    ) -> Decimal | None:
-
-        if value is None:
-            return None
-
-        try:
-            if hasattr(value, "item"):
-                value = value.item()
-
-            return Decimal(str(value))
-
-        except Exception:
-            return None
-
-    @staticmethod
-    def to_date(
-        value: Any,
-    ) -> date | None:
-
-        if value is None:
-            return None
-
-        try:
-            if hasattr(value, "to_pydatetime"):
-                value = value.to_pydatetime()
-
-            if isinstance(value, datetime):
-                return value.date()
-
-            if isinstance(value, date):
-                return value
-
-        except Exception:
-            pass
-
-        return None
+    # ---------------------------------------------------------
+    # Growth
+    # ---------------------------------------------------------
 
     @staticmethod
     def calculate_growth(
@@ -88,80 +53,38 @@ class FinancialResultIngestion:
             / abs(previous)
         ) * Decimal("100")
 
+    # ---------------------------------------------------------
+    # Period matching
+    # ---------------------------------------------------------
+
     @staticmethod
-    def get_row(
-        dataframe,
-        names: list[str],
+    def find_previous_year(
+        current_period: date,
+        values: dict[
+            date,
+            dict[str, Decimal | None],
+        ],
     ):
 
-        if dataframe is None:
-            return None
+        for candidate_period in values:
 
-        # Exact match first.
-        for name in names:
+            days_difference = (
+                current_period
+                - candidate_period
+            ).days
 
-            if name in dataframe.index:
-                return dataframe.loc[name]
-
-        # Case-insensitive match.
-        lookup = {
-            str(index).strip().lower(): index
-            for index in dataframe.index
-        }
-
-        for name in names:
-
-            key = (
-                name.strip().lower()
-            )
-
-            if key in lookup:
-                return dataframe.loc[
-                    lookup[key]
-                ]
+            if (
+                330
+                <= days_difference
+                <= 400
+            ):
+                return values[candidate_period]
 
         return None
 
-    @staticmethod
-    def get_value(
-        row,
-        column,
-    ) -> Decimal | None:
-
-        if row is None:
-            return None
-
-        try:
-            value = row[column]
-
-        except Exception:
-            return None
-
-        return FinancialResultIngestion.to_decimal(
-            value
-        )
-
-    @staticmethod
-    def get_company_name(
-        ticker,
-        symbol: str,
-    ) -> str:
-
-        try:
-            info = ticker.info
-
-            name = (
-                info.get("longName")
-                or info.get("shortName")
-            )
-
-            if name:
-                return str(name)
-
-        except Exception:
-            pass
-
-        return symbol.upper()
+    # ---------------------------------------------------------
+    # Ingest
+    # ---------------------------------------------------------
 
     def ingest(
         self,
@@ -171,300 +94,200 @@ class FinancialResultIngestion:
 
         symbol = symbol.upper().strip()
 
-        yahoo_symbol = (
-            self.yahoo_symbol(symbol)
-        )
-
-        print(
-            f"Fetching financial results "
-            f"for {yahoo_symbol}"
-        )
-
-        ticker = yf.Ticker(
-            yahoo_symbol
-        )
-
-        # -------------------------------------------------
-        # FETCH QUARTERLY INCOME STATEMENT
-        # -------------------------------------------------
-
-        dataframe = (
-            ticker.quarterly_income_stmt
-        )
-
-        if dataframe is None:
-            raise RuntimeError(
-                "Yahoo returned no income statement"
-            )
-
-        if dataframe.empty:
-            raise RuntimeError(
-                "Yahoo returned an empty income statement"
+        if not symbol:
+            raise ValueError(
+                "Symbol cannot be empty"
             )
 
         print(
-            "Yahoo financial columns:",
-            list(dataframe.columns),
+            f"Fetching NSE financial results "
+            f"for {symbol}"
         )
 
-        # -------------------------------------------------
-        # FINANCIAL ROWS
-        # -------------------------------------------------
-
-        revenue_row = self.get_row(
-            dataframe,
-            [
-                "Total Revenue",
-                "Operating Revenue",
-                "Revenue",
-            ],
+        provider_results = (
+            self.provider.get_results(
+                symbol,
+                limit=limit,
+            )
         )
 
-        ebitda_row = self.get_row(
-            dataframe,
-            [
-                "EBITDA",
-                "Normalized EBITDA",
-            ],
-        )
-
-        pat_row = self.get_row(
-            dataframe,
-            [
-                "Net Income",
-                "Net Income Common Stockholders",
-                "Net Income From Continuing Operation Net Minority Interest",
-            ],
-        )
-
-        eps_row = self.get_row(
-            dataframe,
-            [
-                "Diluted EPS",
-                "Basic EPS",
-            ],
-        )
-
-        # Revenue is essential.
-        if revenue_row is None:
+        if not provider_results:
             raise RuntimeError(
-                "Yahoo response does not contain "
-                "a revenue row"
+                f"NSE returned no financial "
+                f"results for {symbol}"
             )
 
-        # -------------------------------------------------
-        # SORT PERIODS
-        # -------------------------------------------------
+        # -----------------------------------------------------
+        # Convert to period dictionary
+        # -----------------------------------------------------
 
-        periods: list[
-            tuple[Any, date]
-        ] = []
+        values = {}
 
-        for column in dataframe.columns:
+        for item in provider_results:
 
-            period = self.to_date(
-                column
+            period = item.get(
+                "period_ended"
             )
 
-            if period is not None:
-                periods.append(
-                    (
-                        column,
-                        period,
-                    )
-                )
+            if period is None:
+                continue
 
-        periods.sort(
-            key=lambda item: item[1],
+            values[period] = {
+                "revenue": item.get(
+                    "revenue"
+                ),
+                "ebitda": item.get(
+                    "ebitda"
+                ),
+                "pat": item.get(
+                    "pat"
+                ),
+                "eps": item.get(
+                    "eps"
+                ),
+            }
+
+        periods = sorted(
+            values.keys(),
             reverse=True,
         )
 
-        periods = periods[:limit]
-
         if not periods:
             raise RuntimeError(
-                "No valid financial periods "
-                "returned by Yahoo"
+                f"NSE returned no valid "
+                f"financial periods for {symbol}"
             )
-
-        # -------------------------------------------------
-        # READ ALL PERIOD VALUES
-        # -------------------------------------------------
-
-        values: dict[
-            date,
-            dict[str, Decimal | None],
-        ] = {}
-
-        for column, period in periods:
-
-            values[period] = {
-                "revenue":
-                    self.get_value(
-                        revenue_row,
-                        column,
-                    ),
-
-                "ebitda":
-                    self.get_value(
-                        ebitda_row,
-                        column,
-                    ),
-
-                "pat":
-                    self.get_value(
-                        pat_row,
-                        column,
-                    ),
-
-                "eps":
-                    self.get_value(
-                        eps_row,
-                        column,
-                    ),
-            }
-
-        # -------------------------------------------------
-        # COMPANY NAME
-        # -------------------------------------------------
-
-        company_name = (
-            self.get_company_name(
-                ticker,
-                symbol,
-            )
-        )
 
         results = []
 
-        # -------------------------------------------------
-        # CREATE / UPDATE RESULTS
-        # -------------------------------------------------
+        # -----------------------------------------------------
+        # Process each quarter
+        # -----------------------------------------------------
 
-        for index, (
-            column,
-            period,
-        ) in enumerate(periods):
+        for index, period in enumerate(
+            periods
+        ):
 
             current = values[period]
 
-            # Previous quarter.
             previous_quarter = None
 
             if index + 1 < len(periods):
 
                 previous_period = periods[
                     index + 1
-                ][1]
-
-                previous_quarter = values[
-                    previous_period
                 ]
 
-            # -------------------------------------------------
-            # YOY
-            #
-            # Find a period approximately 12 months
-            # earlier instead of assuming index + 4.
-            # -------------------------------------------------
-
-            previous_year = None
-
-            for candidate_period in values:
-
-                days_difference = (
-                    period - candidate_period
-                ).days
-
-                if (
-                    330
-                    <= days_difference
-                    <= 400
-                ):
-                    previous_year = values[
-                        candidate_period
+                previous_quarter = (
+                    values[
+                        previous_period
                     ]
-                    break
+                )
+
+            previous_year = (
+                self.find_previous_year(
+                    period,
+                    values,
+                )
+            )
+
+            # -------------------------------------------------
+            # Growth
+            # -------------------------------------------------
 
             revenue_yoy = (
                 self.calculate_growth(
                     current["revenue"],
-                    previous_year[
-                        "revenue"
-                    ]
-                    if previous_year
-                    else None,
+                    (
+                        previous_year[
+                            "revenue"
+                        ]
+                        if previous_year
+                        else None
+                    ),
                 )
             )
 
             revenue_qoq = (
                 self.calculate_growth(
                     current["revenue"],
-                    previous_quarter[
-                        "revenue"
-                    ]
-                    if previous_quarter
-                    else None,
+                    (
+                        previous_quarter[
+                            "revenue"
+                        ]
+                        if previous_quarter
+                        else None
+                    ),
                 )
             )
 
             ebitda_yoy = (
                 self.calculate_growth(
                     current["ebitda"],
-                    previous_year[
-                        "ebitda"
-                    ]
-                    if previous_year
-                    else None,
+                    (
+                        previous_year[
+                            "ebitda"
+                        ]
+                        if previous_year
+                        else None
+                    ),
                 )
             )
 
             ebitda_qoq = (
                 self.calculate_growth(
                     current["ebitda"],
-                    previous_quarter[
-                        "ebitda"
-                    ]
-                    if previous_quarter
-                    else None,
+                    (
+                        previous_quarter[
+                            "ebitda"
+                        ]
+                        if previous_quarter
+                        else None
+                    ),
                 )
             )
 
             pat_yoy = (
                 self.calculate_growth(
                     current["pat"],
-                    previous_year[
-                        "pat"
-                    ]
-                    if previous_year
-                    else None,
+                    (
+                        previous_year[
+                            "pat"
+                        ]
+                        if previous_year
+                        else None
+                    ),
                 )
             )
 
             pat_qoq = (
                 self.calculate_growth(
                     current["pat"],
-                    previous_quarter[
-                        "pat"
-                    ]
-                    if previous_quarter
-                    else None,
+                    (
+                        previous_quarter[
+                            "pat"
+                        ]
+                        if previous_quarter
+                        else None
+                    ),
                 )
             )
 
             eps_yoy = (
                 self.calculate_growth(
                     current["eps"],
-                    previous_year[
-                        "eps"
-                    ]
-                    if previous_year
-                    else None,
+                    (
+                        previous_year[
+                            "eps"
+                        ]
+                        if previous_year
+                        else None
+                    ),
                 )
             )
 
             # -------------------------------------------------
-            # CHECK EXISTING RECORD
+            # Existing record
             # -------------------------------------------------
 
             existing = (
@@ -483,7 +306,7 @@ class FinancialResultIngestion:
                 continue
 
             # -------------------------------------------------
-            # SUMMARY
+            # Summary
             # -------------------------------------------------
 
             summary_parts = []
@@ -495,18 +318,18 @@ class FinancialResultIngestion:
                     f"{revenue_yoy:+.1f}% YoY"
                 )
 
-            if ebitda_yoy is not None:
-
-                summary_parts.append(
-                    f"EBITDA "
-                    f"{ebitda_yoy:+.1f}% YoY"
-                )
-
             if pat_yoy is not None:
 
                 summary_parts.append(
                     f"PAT "
                     f"{pat_yoy:+.1f}% YoY"
+                )
+
+            if eps_yoy is not None:
+
+                summary_parts.append(
+                    f"EPS "
+                    f"{eps_yoy:+.1f}% YoY"
                 )
 
             if summary_parts:
@@ -522,19 +345,22 @@ class FinancialResultIngestion:
 
                 summary = (
                     "Quarterly financial "
-                    "results available."
+                    "results filed with NSE."
                 )
 
             # -------------------------------------------------
-            # SAVE
+            # Save
             # -------------------------------------------------
 
             result = (
                 self.repository.create(
                     symbol=symbol,
-                    company_name=company_name,
+                    company_name=symbol,
+
                     period_ended=period,
+
                     period_type="Quarterly",
+
                     consolidated=True,
 
                     revenue=current[
@@ -542,6 +368,7 @@ class FinancialResultIngestion:
                     ],
 
                     revenue_yoy=revenue_yoy,
+
                     revenue_qoq=revenue_qoq,
 
                     ebitda=current[
@@ -549,14 +376,20 @@ class FinancialResultIngestion:
                     ],
 
                     ebitda_yoy=ebitda_yoy,
+
                     ebitda_qoq=ebitda_qoq,
 
-                    pat=current["pat"],
+                    pat=current[
+                        "pat"
+                    ],
 
                     pat_yoy=pat_yoy,
+
                     pat_qoq=pat_qoq,
 
-                    eps=current["eps"],
+                    eps=current[
+                        "eps"
+                    ],
 
                     eps_yoy=eps_yoy,
 
@@ -564,16 +397,18 @@ class FinancialResultIngestion:
 
                     summary=summary,
 
-                    source="Yahoo Finance",
+                    source="NSE",
 
                     source_url=(
-                        "https://finance.yahoo.com/"
-                        f"quote/{yahoo_symbol}/"
-                        "financials/"
+                        self.provider.WEBSITE_URL
+                        + "?symbol="
+                        + symbol
                     ),
 
-                    broadcast_date=datetime.now(
-                        timezone.utc
+                    broadcast_date=(
+                        datetime.now(
+                            timezone.utc
+                        )
                     ),
                 )
             )
@@ -582,12 +417,12 @@ class FinancialResultIngestion:
                 result
             )
 
-        # Commit once after all records.
         self.db.commit()
 
         print(
             f"Stored {len(results)} "
-            f"financial results for {symbol}"
+            f"NSE financial results "
+            f"for {symbol}"
         )
 
         return results
