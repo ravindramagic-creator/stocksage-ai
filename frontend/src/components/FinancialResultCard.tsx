@@ -14,7 +14,11 @@ interface Props {
 }
 
 
-function growthClass(
+// =========================================================
+// Number
+// =========================================================
+
+function formatNumber(
   value: number | null | undefined,
 ): string {
 
@@ -22,6 +26,77 @@ function growthClass(
     value === null ||
     value === undefined ||
     !Number.isFinite(value)
+  ) {
+    return "—";
+  }
+
+  return Number(
+    value,
+  ).toLocaleString(
+    "en-IN",
+    {
+      maximumFractionDigits: 2,
+    },
+  );
+}
+
+
+// =========================================================
+// EPS
+// =========================================================
+
+function formatEPS(
+  value: number | null | undefined,
+): string {
+
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(value)
+  ) {
+    return "—";
+  }
+
+  return Number(
+    value,
+  ).toFixed(2);
+}
+
+
+// =========================================================
+// Growth
+// =========================================================
+
+function formatGrowth(
+  value: number | null | undefined,
+): string {
+
+  if (
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(value)
+  ) {
+    return "—";
+  }
+
+  const sign =
+    value > 0
+      ? "+"
+      : "";
+
+  return (
+    `${sign}${value.toFixed(1)}%`
+  );
+}
+
+
+function growthClass(
+  value: number | null | undefined,
+): string {
+
+  if (
+    value === null ||
+    value === undefined
   ) {
     return "text-slate-400";
   }
@@ -38,45 +113,9 @@ function growthClass(
 }
 
 
-function formatGrowth(
-  value: number | null | undefined,
-): string {
-
-  if (
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(value)
-  ) {
-    return "—";
-  }
-
-  const sign =
-    value > 0 ? "+" : "";
-
-  return `${sign}${value.toFixed(1)}%`;
-}
-
-
-function formatNumber(
-  value: number | null | undefined,
-): string {
-
-  if (
-    value === null ||
-    value === undefined ||
-    !Number.isFinite(value)
-  ) {
-    return "—";
-  }
-
-  return value.toLocaleString(
-    "en-IN",
-    {
-      maximumFractionDigits: 2,
-    },
-  );
-}
-
+// =========================================================
+// Period
+// =========================================================
 
 function formatPeriod(
   value: string | null,
@@ -86,9 +125,15 @@ function formatPeriod(
     return "—";
   }
 
-  const date = new Date(value);
+  const date = new Date(
+    value,
+  );
 
-  if (Number.isNaN(date.getTime())) {
+  if (
+    Number.isNaN(
+      date.getTime(),
+    )
+  ) {
     return value;
   }
 
@@ -102,19 +147,213 @@ function formatPeriod(
 }
 
 
-function formatPeriodType(
-  result: FinancialResult,
+// =========================================================
+// Result color
+// =========================================================
+
+function resultClass(
+  result: string | null | undefined,
+): string {
+
+  switch (
+    result
+  ) {
+
+    case "BEAT":
+      return "text-emerald-400";
+
+    case "MISS":
+      return "text-red-400";
+
+    case "MEET":
+      return "text-yellow-400";
+
+    default:
+      return "text-slate-500";
+  }
+}
+
+
+// =========================================================
+// Result label
+// =========================================================
+
+function resultLabel(
+  result: string | null | undefined,
+): string {
+
+  switch (
+    result
+  ) {
+
+    case "BEAT":
+      return "BEAT";
+
+    case "MISS":
+      return "MISS";
+
+    case "MEET":
+      return "MEET";
+
+    default:
+      return "—";
+  }
+}
+
+
+// =========================================================
+// Surprise
+// =========================================================
+
+function formatSurprise(
+  value: number | null | undefined,
 ): string {
 
   if (
-    result.period_type
+    value === null ||
+    value === undefined ||
+    !Number.isFinite(value)
   ) {
-    return result.period_type;
+    return "";
   }
 
-  return "Quarter";
+  const sign =
+    value >= 0
+      ? "+"
+      : "";
+
+  return (
+    `${sign}${value.toFixed(1)}%`
+  );
 }
 
+
+// =========================================================
+// Estimate line
+// =========================================================
+
+function EstimateLine({
+  estimate,
+  result,
+  surprise,
+  formatter = formatNumber,
+}: {
+  estimate: number | null;
+  result: string | null;
+  surprise: number | null;
+  formatter?: (
+    value: number | null | undefined,
+  ) => string;
+}) {
+
+  if (
+    estimate === null ||
+    estimate === undefined
+  ) {
+
+    return (
+      <div className="mt-1 text-xs text-slate-500">
+        Estimate —
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-1">
+
+      <div className="text-xs text-slate-500">
+        Est. {formatter(estimate)}
+      </div>
+
+      <div
+        className={`
+          mt-0.5
+          text-xs
+          font-semibold
+          ${resultClass(result)}
+        `}
+      >
+        {resultLabel(result)}
+
+        {surprise !== null &&
+          surprise !== undefined &&
+          ` ${formatSurprise(surprise)}`}
+      </div>
+
+    </div>
+  );
+}
+
+
+// =========================================================
+// Metric cell
+// =========================================================
+
+function MetricCell({
+  actual,
+  estimate,
+  result,
+  surprise,
+  yoy,
+  formatter = formatNumber,
+}: {
+  actual: number | null;
+  estimate: number | null;
+  result: string | null;
+  surprise: number | null;
+  yoy?: number | null;
+  formatter?: (
+    value: number | null | undefined,
+  ) => string;
+}) {
+
+  return (
+    <td
+      className="
+        px-4
+        py-4
+        text-right
+        align-top
+      "
+    >
+
+      <div
+        className="
+          font-medium
+          text-slate-200
+        "
+      >
+        {formatter(actual)}
+      </div>
+
+      <EstimateLine
+        estimate={estimate}
+        result={result}
+        surprise={surprise}
+        formatter={formatter}
+      />
+
+      {yoy !== undefined && (
+        <div
+          className={`
+            mt-1
+            text-xs
+            font-medium
+            ${growthClass(yoy)}
+          `}
+        >
+          YoY {formatGrowth(yoy)}
+        </div>
+      )}
+
+    </td>
+  );
+}
+
+
+// =========================================================
+// Financial Result Card
+// =========================================================
 
 export function FinancialResultCard({
   symbol,
@@ -123,7 +362,9 @@ export function FinancialResultCard({
   const [
     results,
     setResults,
-  ] = useState<FinancialResult[]>([]);
+  ] = useState<FinancialResult[]>(
+    [],
+  );
 
   const [
     loading,
@@ -141,36 +382,49 @@ export function FinancialResultCard({
     let cancelled = false;
 
     setLoading(true);
+
     setError(false);
 
     getFinancialResults(
       symbol,
       8,
     )
-      .then((data) => {
+      .then(
+        (data) => {
 
-        if (!cancelled) {
-          setResults(data);
-        }
+          if (!cancelled) {
 
-      })
-      .catch(() => {
+            setResults(
+              data,
+            );
+          }
+        },
+      )
+      .catch(
+        () => {
 
-        if (!cancelled) {
-          setError(true);
-        }
+          if (!cancelled) {
 
-      })
-      .finally(() => {
+            setError(
+              true,
+            );
+          }
+        },
+      )
+      .finally(
+        () => {
 
-        if (!cancelled) {
-          setLoading(false);
-        }
+          if (!cancelled) {
 
-      });
-
+            setLoading(
+              false,
+            );
+          }
+        },
+      );
 
     return () => {
+
       cancelled = true;
     };
 
@@ -219,7 +473,7 @@ export function FinancialResultCard({
   }
 
 
-  const latestResult =
+  const latest =
     results[0];
 
 
@@ -234,7 +488,9 @@ export function FinancialResultCard({
       "
     >
 
-      {/* Header */}
+      {/* =====================================================
+          Header
+      ===================================================== */}
 
       <div
         className="
@@ -274,64 +530,110 @@ export function FinancialResultCard({
         </div>
 
 
-        {latestResult.market_view && (
+        {latest.overall_result &&
+          latest.overall_result !==
+            "UNKNOWN" && (
 
-          <span
-            className="
+          <div
+            className={`
               rounded-full
-              bg-blue-500/10
               px-3
               py-1
               text-xs
-              font-medium
-              text-blue-400
-            "
+              font-semibold
+              ${resultClass(
+                latest.overall_result,
+              )}
+              bg-slate-950
+            `}
           >
-            {latestResult.market_view}
-          </span>
+            Overall{" "}
+            {resultLabel(
+              latest.overall_result,
+            )}
+          </div>
 
         )}
 
       </div>
 
 
-      {/* Latest Result Summary */}
+      {/* =====================================================
+          Latest summary
+      ===================================================== */}
 
-      {latestResult.summary && (
+      {latest.summary && (
 
         <div
           className="
             border-b
             border-slate-800
+            bg-slate-900/70
             px-5
             py-4
+            text-sm
+            text-slate-300
           "
         >
-
-          <p
-            className="
-              text-sm
-              leading-6
-              text-slate-300
-            "
-          >
-            {latestResult.summary}
-          </p>
-
+          {latest.summary}
         </div>
 
       )}
 
 
-      {/* Desktop Table */}
+      {/* =====================================================
+          Legend
+      ===================================================== */}
 
-      <div className="hidden overflow-x-auto md:block">
+      <div
+        className="
+          flex
+          flex-wrap
+          gap-4
+          border-b
+          border-slate-800
+          px-5
+          py-3
+          text-xs
+        "
+      >
+
+        <span className="text-slate-500">
+          Estimate = analyst consensus
+        </span>
+
+        <span className="text-emerald-400">
+          BEAT
+        </span>
+
+        <span className="text-red-400">
+          MISS
+        </span>
+
+        <span className="text-yellow-400">
+          MEET
+        </span>
+
+      </div>
+
+
+      {/* =====================================================
+          Desktop table
+      ===================================================== */}
+
+      <div
+        className="
+          hidden
+          overflow-x-auto
+          md:block
+        "
+      >
 
         <table
           className="
             w-full
-            min-w-[1000px]
-            text-left
+            min-w-[1250px]
+            border-collapse
           "
         >
 
@@ -347,10 +649,11 @@ export function FinancialResultCard({
 
               <th
                 className="
-                  px-5
+                  px-4
                   py-3
+                  text-left
                   text-xs
-                  font-medium
+                  font-semibold
                   uppercase
                   tracking-wide
                   text-slate-500
@@ -365,7 +668,7 @@ export function FinancialResultCard({
                   py-3
                   text-right
                   text-xs
-                  font-medium
+                  font-semibold
                   uppercase
                   tracking-wide
                   text-slate-500
@@ -380,22 +683,7 @@ export function FinancialResultCard({
                   py-3
                   text-right
                   text-xs
-                  font-medium
-                  uppercase
-                  tracking-wide
-                  text-slate-500
-                "
-              >
-                Rev YoY
-              </th>
-
-              <th
-                className="
-                  px-4
-                  py-3
-                  text-right
-                  text-xs
-                  font-medium
+                  font-semibold
                   uppercase
                   tracking-wide
                   text-slate-500
@@ -410,22 +698,7 @@ export function FinancialResultCard({
                   py-3
                   text-right
                   text-xs
-                  font-medium
-                  uppercase
-                  tracking-wide
-                  text-slate-500
-                "
-              >
-                EBITDA YoY
-              </th>
-
-              <th
-                className="
-                  px-4
-                  py-3
-                  text-right
-                  text-xs
-                  font-medium
+                  font-semibold
                   uppercase
                   tracking-wide
                   text-slate-500
@@ -440,28 +713,28 @@ export function FinancialResultCard({
                   py-3
                   text-right
                   text-xs
-                  font-medium
-                  uppercase
-                  tracking-wide
-                  text-slate-500
-                "
-              >
-                PAT YoY
-              </th>
-
-              <th
-                className="
-                  px-4
-                  py-3
-                  text-right
-                  text-xs
-                  font-medium
+                  font-semibold
                   uppercase
                   tracking-wide
                   text-slate-500
                 "
               >
                 EPS
+              </th>
+
+              <th
+                className="
+                  px-4
+                  py-3
+                  text-center
+                  text-xs
+                  font-semibold
+                  uppercase
+                  tracking-wide
+                  text-slate-500
+                "
+              >
+                Overall
               </th>
 
             </tr>
@@ -478,9 +751,9 @@ export function FinancialResultCard({
                   key={result.id}
                   className="
                     border-b
-                    border-slate-800/70
-                    transition-colors
-                    hover:bg-slate-800/40
+                    border-slate-800
+                    last:border-b-0
+                    hover:bg-slate-800/30
                   "
                 >
 
@@ -488,14 +761,15 @@ export function FinancialResultCard({
 
                   <td
                     className="
-                      px-5
+                      px-4
                       py-4
+                      align-top
                     "
                   >
 
                     <div
                       className="
-                        font-medium
+                        font-semibold
                         text-white
                       "
                     >
@@ -511,13 +785,14 @@ export function FinancialResultCard({
                         text-slate-500
                       "
                     >
-                      {formatPeriodType(
-                        result,
-                      )}
+                      {result.period_type ||
+                        "Quarterly"}
+
+                      {" • "}
 
                       {result.consolidated
-                        ? " • Consolidated"
-                        : " • Standalone"}
+                        ? "Consolidated"
+                        : "Standalone"}
                     </div>
 
                   </td>
@@ -525,129 +800,121 @@ export function FinancialResultCard({
 
                   {/* Revenue */}
 
-                  <td
-                    className="
-                      px-4
-                      py-4
-                      text-right
-                      font-medium
-                      text-slate-200
-                    "
-                  >
-                    {formatNumber(
-                      result.revenue,
-                    )}
-                  </td>
-
-
-                  {/* Revenue YoY */}
-
-                  <td
-                    className={`
-                      px-4
-                      py-4
-                      text-right
-                      font-medium
-                      ${growthClass(
-                        result.revenue_yoy,
-                      )}
-                    `}
-                  >
-                    {formatGrowth(
-                      result.revenue_yoy,
-                    )}
-                  </td>
+                  <MetricCell
+                    actual={
+                      result.revenue
+                    }
+                    estimate={
+                      result.revenue_estimate
+                    }
+                    result={
+                      result.revenue_result
+                    }
+                    surprise={
+                      result.revenue_surprise_pct
+                    }
+                    yoy={
+                      result.revenue_yoy
+                    }
+                  />
 
 
                   {/* EBITDA */}
 
-                  <td
-                    className="
-                      px-4
-                      py-4
-                      text-right
-                      font-medium
-                      text-slate-200
-                    "
-                  >
-                    {formatNumber(
-                      result.ebitda,
-                    )}
-                  </td>
-
-
-                  {/* EBITDA YoY */}
-
-                  <td
-                    className={`
-                      px-4
-                      py-4
-                      text-right
-                      font-medium
-                      ${growthClass(
-                        result.ebitda_yoy,
-                      )}
-                    `}
-                  >
-                    {formatGrowth(
-                      result.ebitda_yoy,
-                    )}
-                  </td>
+                  <MetricCell
+                    actual={
+                      result.ebitda
+                    }
+                    estimate={
+                      result.ebitda_estimate
+                    }
+                    result={
+                      result.ebitda_result
+                    }
+                    surprise={
+                      result.ebitda_surprise_pct
+                    }
+                    yoy={
+                      result.ebitda_yoy
+                    }
+                  />
 
 
                   {/* PAT */}
 
-                  <td
-                    className="
-                      px-4
-                      py-4
-                      text-right
-                      font-medium
-                      text-slate-200
-                    "
-                  >
-                    {formatNumber(
-                      result.pat,
-                    )}
-                  </td>
-
-
-                  {/* PAT YoY */}
-
-                  <td
-                    className={`
-                      px-4
-                      py-4
-                      text-right
-                      font-medium
-                      ${growthClass(
-                        result.pat_yoy,
-                      )}
-                    `}
-                  >
-                    {formatGrowth(
-                      result.pat_yoy,
-                    )}
-                  </td>
+                  <MetricCell
+                    actual={
+                      result.pat
+                    }
+                    estimate={
+                      result.pat_estimate
+                    }
+                    result={
+                      result.pat_result
+                    }
+                    surprise={
+                      result.pat_surprise_pct
+                    }
+                    yoy={
+                      result.pat_yoy
+                    }
+                  />
 
 
                   {/* EPS */}
 
+                  <MetricCell
+                    actual={
+                      result.eps
+                    }
+                    estimate={
+                      result.eps_estimate
+                    }
+                    result={
+                      result.eps_result
+                    }
+                    surprise={
+                      result.eps_surprise_pct
+                    }
+                    formatter={
+                      formatEPS
+                    }
+                    yoy={
+                      result.eps_yoy
+                    }
+                  />
+
+
+                  {/* Overall */}
+
                   <td
                     className="
                       px-4
                       py-4
-                      text-right
-                      font-semibold
-                      text-white
+                      text-center
+                      align-top
                     "
                   >
-                    {result.eps !== null &&
-                    result.eps !== undefined
-                      ? Number(
-                          result.eps,
-                        ).toFixed(2)
-                      : "—"}
+
+                    <span
+                      className={`
+                        inline-flex
+                        rounded-full
+                        bg-slate-950
+                        px-3
+                        py-1
+                        text-xs
+                        font-semibold
+                        ${resultClass(
+                          result.overall_result,
+                        )}
+                      `}
+                    >
+                      {resultLabel(
+                        result.overall_result,
+                      )}
+                    </span>
+
                   </td>
 
                 </tr>
@@ -662,7 +929,9 @@ export function FinancialResultCard({
       </div>
 
 
-      {/* Mobile Cards */}
+      {/* =====================================================
+          Mobile
+      ===================================================== */}
 
       <div
         className="
@@ -677,14 +946,11 @@ export function FinancialResultCard({
 
             <div
               key={result.id}
-              className="
-                p-5
-              "
+              className="p-5"
             >
 
               <div
                 className="
-                  mb-4
                   flex
                   items-start
                   justify-between
@@ -712,109 +978,126 @@ export function FinancialResultCard({
                       text-slate-500
                     "
                   >
-                    {formatPeriodType(
-                      result,
-                    )}
+                    {result.period_type ||
+                      "Quarterly"}
+
+                    {" • "}
 
                     {result.consolidated
-                      ? " • Consolidated"
-                      : " • Standalone"}
+                      ? "Consolidated"
+                      : "Standalone"}
                   </div>
 
                 </div>
 
 
-                <div
-                  className="
-                    text-right
-                  "
+                <span
+                  className={`
+                    rounded-full
+                    bg-slate-950
+                    px-3
+                    py-1
+                    text-xs
+                    font-semibold
+                    ${resultClass(
+                      result.overall_result,
+                    )}
+                  `}
                 >
-
-                  <div
-                    className="
-                      text-xs
-                      text-slate-500
-                    "
-                  >
-                    EPS
-                  </div>
-
-                  <div
-                    className="
-                      font-semibold
-                      text-white
-                    "
-                  >
-                    {result.eps !== null &&
-                    result.eps !== undefined
-                      ? Number(
-                          result.eps,
-                        ).toFixed(2)
-                      : "—"}
-                  </div>
-
-                </div>
+                  {resultLabel(
+                    result.overall_result,
+                  )}
+                </span>
 
               </div>
 
 
               <div
                 className="
+                  mt-4
                   grid
-                  grid-cols-2
+                  grid-cols-1
                   gap-3
                 "
               >
 
                 <MobileMetric
                   label="Revenue"
-                  value={formatNumber(
-                    result.revenue,
-                  )}
-                />
-
-                <MobileMetric
-                  label="Revenue YoY"
-                  value={formatGrowth(
-                    result.revenue_yoy,
-                  )}
-                  className={growthClass(
-                    result.revenue_yoy,
-                  )}
+                  actual={
+                    result.revenue
+                  }
+                  estimate={
+                    result.revenue_estimate
+                  }
+                  result={
+                    result.revenue_result
+                  }
+                  surprise={
+                    result.revenue_surprise_pct
+                  }
+                  yoy={
+                    result.revenue_yoy
+                  }
                 />
 
                 <MobileMetric
                   label="EBITDA"
-                  value={formatNumber(
-                    result.ebitda,
-                  )}
-                />
-
-                <MobileMetric
-                  label="EBITDA YoY"
-                  value={formatGrowth(
-                    result.ebitda_yoy,
-                  )}
-                  className={growthClass(
-                    result.ebitda_yoy,
-                  )}
+                  actual={
+                    result.ebitda
+                  }
+                  estimate={
+                    result.ebitda_estimate
+                  }
+                  result={
+                    result.ebitda_result
+                  }
+                  surprise={
+                    result.ebitda_surprise_pct
+                  }
+                  yoy={
+                    result.ebitda_yoy
+                  }
                 />
 
                 <MobileMetric
                   label="PAT"
-                  value={formatNumber(
-                    result.pat,
-                  )}
+                  actual={
+                    result.pat
+                  }
+                  estimate={
+                    result.pat_estimate
+                  }
+                  result={
+                    result.pat_result
+                  }
+                  surprise={
+                    result.pat_surprise_pct
+                  }
+                  yoy={
+                    result.pat_yoy
+                  }
                 />
 
                 <MobileMetric
-                  label="PAT YoY"
-                  value={formatGrowth(
-                    result.pat_yoy,
-                  )}
-                  className={growthClass(
-                    result.pat_yoy,
-                  )}
+                  label="EPS"
+                  actual={
+                    result.eps
+                  }
+                  estimate={
+                    result.eps_estimate
+                  }
+                  result={
+                    result.eps_result
+                  }
+                  surprise={
+                    result.eps_surprise_pct
+                  }
+                  yoy={
+                    result.eps_yoy
+                  }
+                  formatter={
+                    formatEPS
+                  }
                 />
 
               </div>
@@ -827,9 +1110,11 @@ export function FinancialResultCard({
       </div>
 
 
-      {/* Source */}
+      {/* =====================================================
+          Source
+      ===================================================== */}
 
-      {latestResult.source_url && (
+      {latest.source_url && (
 
         <div
           className="
@@ -841,7 +1126,9 @@ export function FinancialResultCard({
         >
 
           <a
-            href={latestResult.source_url}
+            href={
+              latest.source_url
+            }
             target="_blank"
             rel="noopener noreferrer"
             className="
@@ -862,17 +1149,37 @@ export function FinancialResultCard({
 }
 
 
+// =========================================================
+// Mobile metric
+// =========================================================
+
 interface MobileMetricProps {
   label: string;
-  value: string;
-  className?: string;
+
+  actual: number | null;
+
+  estimate: number | null;
+
+  result: string | null;
+
+  surprise: number | null;
+
+  yoy: number | null;
+
+  formatter?: (
+    value: number | null | undefined,
+  ) => string;
 }
 
 
 function MobileMetric({
   label,
-  value,
-  className = "text-slate-200",
+  actual,
+  estimate,
+  result,
+  surprise,
+  yoy,
+  formatter = formatNumber,
 }: MobileMetricProps) {
 
   return (
@@ -880,28 +1187,56 @@ function MobileMetric({
       className="
         rounded-lg
         bg-slate-950
-        p-3
+        p-4
       "
     >
 
       <div
         className="
           text-xs
+          font-medium
           text-slate-500
         "
       >
         {label}
       </div>
 
+
       <div
-        className={`
+        className="
           mt-1
+          text-lg
           font-semibold
-          ${className}
-        `}
+          text-white
+        "
       >
-        {value}
+        {formatter(actual)}
       </div>
+
+
+      <EstimateLine
+        estimate={estimate}
+        result={result}
+        surprise={surprise}
+        formatter={formatter}
+      />
+
+
+      {yoy !== null &&
+        yoy !== undefined && (
+
+        <div
+          className={`
+            mt-1
+            text-xs
+            font-medium
+            ${growthClass(yoy)}
+          `}
+        >
+          YoY {formatGrowth(yoy)}
+        </div>
+
+      )}
 
     </div>
   );

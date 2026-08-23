@@ -3,12 +3,22 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.financial_result import FinancialResult
+from app.models.financial_result import (
+    FinancialResult,
+)
 
 
 class FinancialResultRepository:
-    def __init__(self, db: Session):
+
+    def __init__(
+        self,
+        db: Session,
+    ):
         self.db = db
+
+    # =========================================================
+    # Create
+    # =========================================================
 
     def create(
         self,
@@ -18,71 +28,52 @@ class FinancialResultRepository:
         period_type: str | None,
         consolidated: bool,
 
-        # -----------------------------------------------------
-        # Revenue
-        # -----------------------------------------------------
-
         revenue,
         revenue_yoy,
         revenue_qoq,
         revenue_estimate=None,
         revenue_surprise_pct=None,
-        revenue_result: str | None = None,
-
-        # -----------------------------------------------------
-        # EBITDA
-        # -----------------------------------------------------
+        revenue_result=None,
 
         ebitda=None,
         ebitda_yoy=None,
         ebitda_qoq=None,
         ebitda_estimate=None,
         ebitda_surprise_pct=None,
-        ebitda_result: str | None = None,
-
-        # -----------------------------------------------------
-        # PAT / Net Profit
-        # -----------------------------------------------------
+        ebitda_result=None,
 
         pat=None,
         pat_yoy=None,
         pat_qoq=None,
         pat_estimate=None,
         pat_surprise_pct=None,
-        pat_result: str | None = None,
-
-        # -----------------------------------------------------
-        # EPS
-        # -----------------------------------------------------
+        pat_result=None,
 
         eps=None,
         eps_yoy=None,
         eps_estimate=None,
         eps_surprise_pct=None,
-        eps_result: str | None = None,
+        eps_result=None,
 
-        # -----------------------------------------------------
-        # Overall result
-        # -----------------------------------------------------
+        overall_result=None,
 
-        overall_result: str | None = None,
-
-        # -----------------------------------------------------
-        # Other information
-        # -----------------------------------------------------
-
-        market_view: str | None = None,
-        summary: str | None = None,
-        source: str | None = None,
-        source_url: str | None = None,
+        market_view=None,
+        summary=None,
+        source=None,
+        source_url=None,
         broadcast_date=None,
     ) -> FinancialResult:
 
         result = FinancialResult(
+
             symbol=symbol.upper(),
+
             company_name=company_name,
+
             period_ended=period_ended,
+
             period_type=period_type,
+
             consolidated=consolidated,
 
             # -------------------------------------------------
@@ -90,32 +81,61 @@ class FinancialResultRepository:
             # -------------------------------------------------
 
             revenue=revenue,
+
             revenue_yoy=revenue_yoy,
+
             revenue_qoq=revenue_qoq,
-            revenue_estimate=revenue_estimate,
-            revenue_surprise_pct=revenue_surprise_pct,
-            revenue_result=revenue_result,
+
+            revenue_estimate=(
+                revenue_estimate
+            ),
+
+            revenue_surprise_pct=(
+                revenue_surprise_pct
+            ),
+
+            revenue_result=(
+                revenue_result
+            ),
 
             # -------------------------------------------------
             # EBITDA
             # -------------------------------------------------
 
             ebitda=ebitda,
+
             ebitda_yoy=ebitda_yoy,
+
             ebitda_qoq=ebitda_qoq,
-            ebitda_estimate=ebitda_estimate,
-            ebitda_surprise_pct=ebitda_surprise_pct,
-            ebitda_result=ebitda_result,
+
+            ebitda_estimate=(
+                ebitda_estimate
+            ),
+
+            ebitda_surprise_pct=(
+                ebitda_surprise_pct
+            ),
+
+            ebitda_result=(
+                ebitda_result
+            ),
 
             # -------------------------------------------------
             # PAT
             # -------------------------------------------------
 
             pat=pat,
+
             pat_yoy=pat_yoy,
+
             pat_qoq=pat_qoq,
+
             pat_estimate=pat_estimate,
-            pat_surprise_pct=pat_surprise_pct,
+
+            pat_surprise_pct=(
+                pat_surprise_pct
+            ),
+
             pat_result=pat_result,
 
             # -------------------------------------------------
@@ -123,37 +143,48 @@ class FinancialResultRepository:
             # -------------------------------------------------
 
             eps=eps,
+
             eps_yoy=eps_yoy,
+
             eps_estimate=eps_estimate,
-            eps_surprise_pct=eps_surprise_pct,
+
+            eps_surprise_pct=(
+                eps_surprise_pct
+            ),
+
             eps_result=eps_result,
 
             # -------------------------------------------------
             # Overall
             # -------------------------------------------------
 
-            overall_result=overall_result,
+            overall_result=(
+                overall_result
+            ),
 
             # -------------------------------------------------
             # Other
             # -------------------------------------------------
 
             market_view=market_view,
+
             summary=summary,
 
             source=source,
+
             source_url=source_url,
 
             broadcast_date=broadcast_date,
         )
 
         self.db.add(result)
+
         self.db.flush()
 
         return result
 
     # =========================================================
-    # Get by period
+    # Get by symbol + period
     # =========================================================
 
     def get_by_period(
@@ -167,6 +198,7 @@ class FinancialResultRepository:
             .where(
                 FinancialResult.symbol
                 == symbol.upper(),
+
                 FinancialResult.period_ended
                 == period,
             )
@@ -178,7 +210,34 @@ class FinancialResultRepository:
         ).first()
 
     # =========================================================
-    # Get latest result
+    # Update
+    # =========================================================
+
+    def update(
+        self,
+        result: FinancialResult,
+        **values,
+    ) -> FinancialResult:
+
+        for key, value in values.items():
+
+            if hasattr(
+                result,
+                key,
+            ):
+
+                setattr(
+                    result,
+                    key,
+                    value,
+                )
+
+        self.db.flush()
+
+        return result
+
+    # =========================================================
+    # Latest
     # =========================================================
 
     def get_latest(
@@ -203,7 +262,7 @@ class FinancialResultRepository:
         ).first()
 
     # =========================================================
-    # Get recent results
+    # Recent
     # =========================================================
 
     def get_recent(
@@ -217,6 +276,7 @@ class FinancialResultRepository:
         )
 
         if symbol:
+
             statement = statement.where(
                 FinancialResult.symbol
                 == symbol.upper()
@@ -237,7 +297,7 @@ class FinancialResultRepository:
         )
 
     # =========================================================
-    # Get all results
+    # All
     # =========================================================
 
     def get_all(
@@ -250,6 +310,7 @@ class FinancialResultRepository:
         )
 
         if symbol:
+
             statement = statement.where(
                 FinancialResult.symbol
                 == symbol.upper()

@@ -27,6 +27,10 @@ router = APIRouter(
 )
 
 
+# ============================================================
+# GET recent financial results
+# ============================================================
+
 @router.get(
     "",
     response_model=list[
@@ -35,7 +39,7 @@ router = APIRouter(
 )
 def get_financial_results(
     symbol: str | None = None,
-    limit: int = 20,
+    limit: int = 8,
     db: Session = Depends(get_db),
 ):
 
@@ -53,7 +57,35 @@ def get_financial_results(
         limit=limit,
     )
 
+    # --------------------------------------------------------
+    # Automatically repair missing data.
+    # --------------------------------------------------------
+
+    needs_sync = False
+
     if symbol and not results:
+
+        needs_sync = True
+
+    elif symbol and results:
+
+        for result in results:
+
+            if (
+                result.revenue is None
+                and result.pat is None
+                and result.eps is None
+            ):
+
+                needs_sync = True
+
+                break
+
+    # --------------------------------------------------------
+    # NSE sync
+    # --------------------------------------------------------
+
+    if symbol and needs_sync:
 
         ingestion = (
             FinancialResultIngestion(db)
@@ -85,6 +117,10 @@ def get_financial_results(
     return results
 
 
+# ============================================================
+# POST manual sync
+# ============================================================
+
 @router.post(
     "/{symbol}/sync",
     response_model=list[
@@ -108,7 +144,7 @@ def sync_financial_results(
 
     try:
 
-        ingestion.ingest(
+        results = ingestion.ingest(
             symbol,
             limit,
         )
@@ -120,19 +156,17 @@ def sync_financial_results(
             detail=(
                 "Unable to fetch "
                 "financial results "
-                "from NSE"
+                "from NSE: "
+                f"{exc}"
             ),
         ) from exc
 
-    service = FinancialResultService(
-        db
-    )
+    return results
 
-    return service.get_recent(
-        symbol=symbol,
-        limit=limit,
-    )
 
+# ============================================================
+# GET latest
+# ============================================================
 
 @router.get(
     "/{symbol}/latest",
@@ -151,7 +185,20 @@ def get_latest_result(
         symbol
     )
 
-    if result is None:
+    # --------------------------------------------------------
+    # If missing or empty, sync NSE.
+    # --------------------------------------------------------
+
+    needs_sync = (
+        result is None
+        or (
+            result.revenue is None
+            and result.pat is None
+            and result.eps is None
+        )
+    )
+
+    if needs_sync:
 
         ingestion = (
             FinancialResultIngestion(db)
