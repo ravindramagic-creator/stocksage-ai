@@ -133,7 +133,7 @@ export async function getLatestFinancialResult(
 
 export async function getFinancialResults(
   symbol: string,
-  limit: number = 8,
+  limit: number = 40,
 ): Promise<FinancialResult[]> {
 
   const response = await fetch(

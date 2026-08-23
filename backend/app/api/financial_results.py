@@ -27,6 +27,9 @@ router = APIRouter(
 )
 
 
+MAX_FINANCIAL_RESULT_LIMIT = 40
+
+
 # ============================================================
 # GET recent financial results
 # ============================================================
@@ -39,13 +42,16 @@ router = APIRouter(
 )
 def get_financial_results(
     symbol: str | None = None,
-    limit: int = 8,
+    limit: int = 40,
     db: Session = Depends(get_db),
 ):
 
     limit = max(
         1,
-        min(limit, 20),
+        min(
+            limit,
+            MAX_FINANCIAL_RESULT_LIMIT,
+        ),
     )
 
     service = FinancialResultService(
@@ -58,7 +64,7 @@ def get_financial_results(
     )
 
     # --------------------------------------------------------
-    # Automatically sync if data is missing.
+    # Automatically repair missing data.
     # --------------------------------------------------------
 
     needs_sync = False
@@ -80,10 +86,16 @@ def get_financial_results(
                 needs_sync = True
                 break
 
+    # --------------------------------------------------------
+    # NSE + analyst estimate sync
+    # --------------------------------------------------------
+
     if symbol and needs_sync:
 
         ingestion = (
-            FinancialResultIngestion(db)
+            FinancialResultIngestion(
+                db
+            )
         )
 
         try:
@@ -124,17 +136,22 @@ def get_financial_results(
 )
 def sync_financial_results(
     symbol: str,
-    limit: int = 8,
+    limit: int = 40,
     db: Session = Depends(get_db),
 ):
 
     limit = max(
         1,
-        min(limit, 20),
+        min(
+            limit,
+            MAX_FINANCIAL_RESULT_LIMIT,
+        ),
     )
 
     ingestion = (
-        FinancialResultIngestion(db)
+        FinancialResultIngestion(
+            db
+        )
     )
 
     try:
@@ -159,52 +176,6 @@ def sync_financial_results(
 
 
 # ============================================================
-# POST consensus-only sync
-# ============================================================
-
-@router.post(
-    "/{symbol}/sync-estimates",
-    response_model=list[
-        FinancialResultResponse
-    ],
-)
-def sync_estimates(
-    symbol: str,
-    db: Session = Depends(get_db),
-):
-
-    ingestion = (
-        FinancialResultIngestion(db)
-    )
-
-    try:
-
-        ingestion.sync_estimates(
-            symbol
-        )
-
-    except Exception as exc:
-
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Unable to fetch "
-                "IndianAPI estimates: "
-                f"{exc}"
-            ),
-        ) from exc
-
-    service = FinancialResultService(
-        db
-    )
-
-    return service.get_recent(
-        symbol=symbol,
-        limit=20,
-    )
-
-
-# ============================================================
 # GET latest
 # ============================================================
 
@@ -212,7 +183,7 @@ def sync_estimates(
     "/{symbol}/latest",
     response_model=FinancialResultResponse,
 )
-def get_latest(
+def get_latest_result(
     symbol: str,
     db: Session = Depends(get_db),
 ):
@@ -224,6 +195,10 @@ def get_latest(
     result = service.get_latest(
         symbol
     )
+
+    # --------------------------------------------------------
+    # If missing or empty, sync NSE + estimates.
+    # --------------------------------------------------------
 
     needs_sync = (
         result is None
@@ -237,14 +212,16 @@ def get_latest(
     if needs_sync:
 
         ingestion = (
-            FinancialResultIngestion(db)
+            FinancialResultIngestion(
+                db
+            )
         )
 
         try:
 
             ingestion.ingest(
                 symbol,
-                8,
+                MAX_FINANCIAL_RESULT_LIMIT,
             )
 
         except Exception as exc:

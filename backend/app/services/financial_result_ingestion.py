@@ -19,7 +19,6 @@ from app.services.indianapi_financial_result_provider import (
 
 
 class FinancialResultIngestion:
-
     RESULT_TOLERANCE_PCT = Decimal("1.0")
 
     def __init__(
@@ -230,7 +229,7 @@ class FinancialResultIngestion:
     def ingest_nse(
         self,
         symbol: str,
-        limit: int = 8,
+        limit: int = 40,
     ) -> list:
 
         symbol = symbol.upper().strip()
@@ -410,11 +409,7 @@ class FinancialResultIngestion:
             )
 
             # -------------------------------------------------
-            # IMPORTANT:
-            #
             # Existing records MUST be updated.
-            #
-            # The previous implementation skipped them.
             # -------------------------------------------------
 
             existing = (
@@ -637,7 +632,6 @@ class FinancialResultIngestion:
             period = item.period_ended
 
             if period not in grouped:
-
                 grouped[period] = {}
 
             grouped[period][
@@ -858,7 +852,7 @@ class FinancialResultIngestion:
     def ingest(
         self,
         symbol: str,
-        limit: int = 8,
+        limit: int = 40,
     ) -> list:
 
         symbol = symbol.upper().strip()

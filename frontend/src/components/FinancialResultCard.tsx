@@ -387,7 +387,7 @@ export function FinancialResultCard({
 
     getFinancialResults(
       symbol,
-      8,
+      40,
     )
       .then(
         (data) => {
