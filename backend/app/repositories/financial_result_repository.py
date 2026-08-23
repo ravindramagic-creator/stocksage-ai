@@ -33,181 +33,94 @@ class FinancialResultRepository:
         revenue_qoq,
         revenue_estimate=None,
         revenue_surprise_pct=None,
-        revenue_result=None,
+        revenue_result: str | None = None,
 
         ebitda=None,
         ebitda_yoy=None,
         ebitda_qoq=None,
         ebitda_estimate=None,
         ebitda_surprise_pct=None,
-        ebitda_result=None,
+        ebitda_result: str | None = None,
 
         pat=None,
         pat_yoy=None,
         pat_qoq=None,
         pat_estimate=None,
         pat_surprise_pct=None,
-        pat_result=None,
+        pat_result: str | None = None,
 
         eps=None,
         eps_yoy=None,
         eps_estimate=None,
         eps_surprise_pct=None,
-        eps_result=None,
+        eps_result: str | None = None,
 
-        overall_result=None,
+        overall_result: str | None = None,
 
-        market_view=None,
-        summary=None,
-        source=None,
-        source_url=None,
+        market_view: str | None = None,
+        summary: str | None = None,
+        source: str | None = None,
+        source_url: str | None = None,
         broadcast_date=None,
     ) -> FinancialResult:
 
         result = FinancialResult(
-
             symbol=symbol.upper(),
-
             company_name=company_name,
-
             period_ended=period_ended,
-
             period_type=period_type,
-
             consolidated=consolidated,
 
-            # -------------------------------------------------
-            # Revenue
-            # -------------------------------------------------
-
             revenue=revenue,
-
             revenue_yoy=revenue_yoy,
-
             revenue_qoq=revenue_qoq,
-
-            revenue_estimate=(
-                revenue_estimate
-            ),
-
+            revenue_estimate=revenue_estimate,
             revenue_surprise_pct=(
                 revenue_surprise_pct
             ),
-
-            revenue_result=(
-                revenue_result
-            ),
-
-            # -------------------------------------------------
-            # EBITDA
-            # -------------------------------------------------
+            revenue_result=revenue_result,
 
             ebitda=ebitda,
-
             ebitda_yoy=ebitda_yoy,
-
             ebitda_qoq=ebitda_qoq,
-
-            ebitda_estimate=(
-                ebitda_estimate
-            ),
-
+            ebitda_estimate=ebitda_estimate,
             ebitda_surprise_pct=(
                 ebitda_surprise_pct
             ),
-
-            ebitda_result=(
-                ebitda_result
-            ),
-
-            # -------------------------------------------------
-            # PAT
-            # -------------------------------------------------
+            ebitda_result=ebitda_result,
 
             pat=pat,
-
             pat_yoy=pat_yoy,
-
             pat_qoq=pat_qoq,
-
             pat_estimate=pat_estimate,
-
             pat_surprise_pct=(
                 pat_surprise_pct
             ),
-
             pat_result=pat_result,
 
-            # -------------------------------------------------
-            # EPS
-            # -------------------------------------------------
-
             eps=eps,
-
             eps_yoy=eps_yoy,
-
             eps_estimate=eps_estimate,
-
             eps_surprise_pct=(
                 eps_surprise_pct
             ),
-
             eps_result=eps_result,
 
-            # -------------------------------------------------
-            # Overall
-            # -------------------------------------------------
-
-            overall_result=(
-                overall_result
-            ),
-
-            # -------------------------------------------------
-            # Other
-            # -------------------------------------------------
+            overall_result=overall_result,
 
             market_view=market_view,
-
             summary=summary,
 
             source=source,
-
             source_url=source_url,
 
             broadcast_date=broadcast_date,
         )
 
         self.db.add(result)
-
         self.db.flush()
 
         return result
-
-    # =========================================================
-    # Get by symbol + period
-    # =========================================================
-
-    def get_by_period(
-        self,
-        symbol: str,
-        period: date,
-    ) -> FinancialResult | None:
-
-        statement = (
-            select(FinancialResult)
-            .where(
-                FinancialResult.symbol
-                == symbol.upper(),
-
-                FinancialResult.period_ended
-                == period,
-            )
-            .limit(1)
-        )
-
-        return self.db.scalars(
-            statement
-        ).first()
 
     # =========================================================
     # Update
@@ -221,10 +134,7 @@ class FinancialResultRepository:
 
         for key, value in values.items():
 
-            if hasattr(
-                result,
-                key,
-            ):
+            if hasattr(result, key):
 
                 setattr(
                     result,
@@ -235,6 +145,31 @@ class FinancialResultRepository:
         self.db.flush()
 
         return result
+
+    # =========================================================
+    # Get by period
+    # =========================================================
+
+    def get_by_period(
+        self,
+        symbol: str,
+        period: date,
+    ) -> FinancialResult | None:
+
+        statement = (
+            select(FinancialResult)
+            .where(
+                FinancialResult.symbol
+                == symbol.upper(),
+                FinancialResult.period_ended
+                == period,
+            )
+            .limit(1)
+        )
+
+        return self.db.scalars(
+            statement
+        ).first()
 
     # =========================================================
     # Latest

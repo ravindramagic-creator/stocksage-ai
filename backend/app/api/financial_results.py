@@ -58,7 +58,7 @@ def get_financial_results(
     )
 
     # --------------------------------------------------------
-    # Automatically repair missing data.
+    # Automatically sync if data is missing.
     # --------------------------------------------------------
 
     needs_sync = False
@@ -78,12 +78,7 @@ def get_financial_results(
             ):
 
                 needs_sync = True
-
                 break
-
-    # --------------------------------------------------------
-    # NSE sync
-    # --------------------------------------------------------
 
     if symbol and needs_sync:
 
@@ -104,8 +99,8 @@ def get_financial_results(
                 status_code=502,
                 detail=(
                     "Unable to fetch "
-                    "financial results "
-                    "from NSE"
+                    "financial results: "
+                    f"{exc}"
                 ),
             ) from exc
 
@@ -155,13 +150,58 @@ def sync_financial_results(
             status_code=502,
             detail=(
                 "Unable to fetch "
-                "financial results "
-                "from NSE: "
+                "financial results: "
                 f"{exc}"
             ),
         ) from exc
 
     return results
+
+
+# ============================================================
+# POST consensus-only sync
+# ============================================================
+
+@router.post(
+    "/{symbol}/sync-estimates",
+    response_model=list[
+        FinancialResultResponse
+    ],
+)
+def sync_estimates(
+    symbol: str,
+    db: Session = Depends(get_db),
+):
+
+    ingestion = (
+        FinancialResultIngestion(db)
+    )
+
+    try:
+
+        ingestion.sync_estimates(
+            symbol
+        )
+
+    except Exception as exc:
+
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Unable to fetch "
+                "IndianAPI estimates: "
+                f"{exc}"
+            ),
+        ) from exc
+
+    service = FinancialResultService(
+        db
+    )
+
+    return service.get_recent(
+        symbol=symbol,
+        limit=20,
+    )
 
 
 # ============================================================
@@ -172,7 +212,7 @@ def sync_financial_results(
     "/{symbol}/latest",
     response_model=FinancialResultResponse,
 )
-def get_latest_result(
+def get_latest(
     symbol: str,
     db: Session = Depends(get_db),
 ):
@@ -184,10 +224,6 @@ def get_latest_result(
     result = service.get_latest(
         symbol
     )
-
-    # --------------------------------------------------------
-    # If missing or empty, sync NSE.
-    # --------------------------------------------------------
 
     needs_sync = (
         result is None
@@ -217,8 +253,8 @@ def get_latest_result(
                 status_code=502,
                 detail=(
                     "Unable to fetch "
-                    "financial results "
-                    "from NSE"
+                    "financial results: "
+                    f"{exc}"
                 ),
             ) from exc
 
