@@ -17,22 +17,28 @@ from app.api.updates import router as updates_router
 from app.api.watchlist import router as watchlist_router
 from app.core.config import settings
 from app.db.init_db import initialize_database
+from app.services.auto_sales_worker import auto_sales_worker
 from app.services.update_worker import update_worker
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
+
     worker_task = asyncio.create_task(update_worker())
+    auto_sales_task = asyncio.create_task(auto_sales_worker())
 
     try:
         yield
     finally:
         worker_task.cancel()
-        try:
-            await worker_task
-        except asyncio.CancelledError:
-            pass
+        auto_sales_task.cancel()
+
+        for task in (worker_task, auto_sales_task):
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
 
 
 app = FastAPI(
