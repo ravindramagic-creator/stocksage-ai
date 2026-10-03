@@ -1,19 +1,25 @@
 from __future__ import annotations
 
+import logging
 import re
+import time
 from datetime import date, datetime
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from bs4 import BeautifulSoup
 
 from app.providers.auto_sales_provider import AutoSalesProvider
 
+logger = logging.getLogger("stocksage.auto_sales_provider")
+
 
 class VahanRetailProvider(AutoSalesProvider):
-    """Parse monthly OEM registration data derived from VAHAN.
+    """Fetch monthly OEM registration data from a Vahan-derived public page.
 
-    The source is a public Vahan-derived dashboard. These are registrations
-    (retail), not manufacturer wholesale/dispatch sales.
+    These values represent vehicle registrations/retail activity, not OEM
+    wholesale dispatches. The source page is maintained separately from
+    StockSage-AI and its HTML can change, so parsing is intentionally tolerant.
     """
 
     BASE_URL = "https://indianstockalerts.com/vahan"
@@ -48,27 +54,67 @@ class VahanRetailProvider(AutoSalesProvider):
         "FORCE": "FORCEMOT",
     }
 
-    def __init__(self, timeout: int = 20):
+    def __init__(self, timeout: int = 20, retries: int = 3):
         self.timeout = timeout
+        self.retries = retries
 
     def fetch_month(self, month: date) -> list[dict]:
-        # The source pages expose an archive table containing historical
-        # monthly rows, so one request per segment gives the full history.
         records: list[dict] = []
         for segment, slug in self.SEGMENTS.items():
-            records.extend(self._fetch_segment(slug, segment, month))
+            try:
+                records.extend(self._fetch_segment(slug, segment, month))
+            except Exception:
+                logger.exception("Auto-sales segment fetch failed: %s", segment)
         return records
 
     def fetch_history(self, segment: str | None = None) -> list[dict]:
         records: list[dict] = []
-        segments = (
-            {segment.upper(): self.SEGMENTS[segment.upper()]}
-            if segment and segment.upper() in self.SEGMENTS
-            else self.SEGMENTS
-        )
+        if segment:
+            key = segment.upper()
+            segments = {key: self.SEGMENTS[key]} if key in self.SEGMENTS else {}
+        else:
+            segments = self.SEGMENTS
+
         for segment_name, slug in segments.items():
-            records.extend(self._fetch_segment(slug, segment_name, None))
+            try:
+                segment_records = self._fetch_segment(slug, segment_name, None)
+                records.extend(segment_records)
+                logger.info(
+                    "Fetched %d auto-sales records for %s",
+                    len(segment_records),
+                    segment_name,
+                )
+            except Exception:
+                # A single broken segment/source must not prevent the other
+                # segments from being refreshed.
+                logger.exception("Auto-sales segment fetch failed: %s", segment_name)
+
         return records
+
+    def _download(self, url: str) -> str:
+        last_error: Exception | None = None
+        for attempt in range(1, self.retries + 1):
+            try:
+                request = Request(
+                    url,
+                    headers={
+                        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X) StockSage-AI/1.0",
+                        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                        "Accept-Language": "en-IN,en;q=0.9",
+                        "Cache-Control": "no-cache",
+                    },
+                )
+                with urlopen(request, timeout=self.timeout) as response:
+                    status = getattr(response, "status", 200)
+                    if status != 200:
+                        raise RuntimeError(f"HTTP {status} from {url}")
+                    return response.read().decode("utf-8", errors="replace")
+            except (HTTPError, URLError, TimeoutError, OSError, RuntimeError) as exc:
+                last_error = exc
+                if attempt < self.retries:
+                    time.sleep(attempt)
+
+        raise RuntimeError(f"Unable to fetch auto-sales source: {url}: {last_error}")
 
     def _fetch_segment(
         self,
@@ -77,17 +123,7 @@ class VahanRetailProvider(AutoSalesProvider):
         requested_month: date | None,
     ) -> list[dict]:
         url = f"{self.BASE_URL}/{slug}"
-        request = Request(
-            url,
-            headers={
-                "User-Agent": "StockSage-AI/1.0 (+monthly-auto-sales)",
-                "Accept": "text/html,application/xhtml+xml",
-            },
-        )
-
-        with urlopen(request, timeout=self.timeout) as response:
-            html = response.read().decode("utf-8", errors="replace")
-
+        html = self._download(url)
         soup = BeautifulSoup(html, "html.parser")
         table = self._find_monthly_table(soup)
         if table is None:
@@ -99,7 +135,10 @@ class VahanRetailProvider(AutoSalesProvider):
 
         result: list[dict] = []
         for row in table.find_all("tr"):
-            cells = [self._clean(cell.get_text(" ", strip=True)) for cell in row.find_all(["td", "th"])]
+            cells = [
+                self._clean(cell.get_text(" ", strip=True))
+                for cell in row.find_all(["td", "th"])
+            ]
             if not cells:
                 continue
 
@@ -109,8 +148,8 @@ class VahanRetailProvider(AutoSalesProvider):
             if requested_month and month_value != requested_month.replace(day=1):
                 continue
 
-            # Each OEM contributes Vol / YoY / MS. The last Industry group
-            # is intentionally ignored.
+            # Every company contributes Vol / YoY / MS. Any final Industry
+            # group is deliberately ignored.
             data_cells = cells[1:]
             for index, company_name in enumerate(company_names):
                 start = index * 3
@@ -144,33 +183,56 @@ class VahanRetailProvider(AutoSalesProvider):
 
     @staticmethod
     def _find_monthly_table(soup: BeautifulSoup):
+        """Find the data table without relying on exact page wording."""
+        candidates = []
         for table in soup.find_all("table"):
             text = table.get_text(" ", strip=True).lower()
-            if "monthly" in text and "industry" in text and "yoy" in text:
-                return table
-        return None
+            if "month" in text and "industry" in text:
+                score = 0
+                for token in ("maruti", "tata", "mahindra", "hyundai", "hero", "honda", "tvs"):
+                    if token in text:
+                        score += 1
+                if "yoy" in text:
+                    score += 2
+                candidates.append((score, table))
 
-    @staticmethod
-    def _extract_company_headers(table: BeautifulSoup) -> list[str]:
-        rows = table.find_all("tr")[:3]
-        if not rows:
-            return []
+        if not candidates:
+            return None
+
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][1]
+
+    def _extract_company_headers(self, table: BeautifulSoup) -> list[str]:
+        """Extract OEM names from the table header even if th/td markup changes."""
+        rows = table.find_all("tr")[:5]
+        metric_names = {"month", "vol", "yoy", "ms", "industry", "volume", "market share"}
 
         for row in rows:
-            headers = row.find_all("th")
+            cells = row.find_all(["th", "td"])
             names: list[str] = []
-            for header in headers:
-                text = header.get_text(" ", strip=True)
-                colspan = int(header.get("colspan", 1) or 1)
-                if text and text.lower() not in {"month", "industry"}:
-                    # Company headers normally span three metric columns.
-                    names.append(text)
-                elif text.lower() == "industry":
-                    break
-                elif colspan > 1 and text:
-                    names.append(text)
+            for cell in cells:
+                text = self._clean(cell.get_text(" ", strip=True))
+                lower = text.lower()
+                if not text or lower in metric_names:
+                    continue
+                if lower.startswith("sep-") or lower.startswith("aug-"):
+                    continue
+                if re.fullmatch(r"[+-]?\d+(?:\.\d+)?%?", text):
+                    continue
+                if text in {"Vol", "YoY", "MS"}:
+                    continue
+                colspan = int(cell.get("colspan", 1) or 1)
+                # A company header normally spans three metrics. If colspan is
+                # absent, known OEM names still allow us to recognize it.
+                is_known = any(key in lower for key in self.SYMBOLS)
+                if colspan >= 2 or is_known:
+                    if lower != "industry" and text not in names:
+                        names.append(text)
+
             if names:
-                return names
+                # Never treat the final Industry aggregate as an OEM.
+                return [name for name in names if name.lower() != "industry"]
+
         return []
 
     @staticmethod
@@ -180,7 +242,7 @@ class VahanRetailProvider(AutoSalesProvider):
     @staticmethod
     def _parse_month(value: str) -> date | None:
         value = value.replace("(P)", "").replace("*", "").strip()
-        for fmt in ("%b-%y", "%B-%Y"):
+        for fmt in ("%b-%y", "%B-%Y", "%b-%Y", "%B-%y"):
             try:
                 return datetime.strptime(value, fmt).date().replace(day=1)
             except ValueError:
