@@ -194,7 +194,14 @@ export function TechnicalIndicators({ symbol }: Props) {
             <ReferenceLine y={70} strokeDasharray="4 4" strokeOpacity={0.4} />
             <ReferenceLine y={30} strokeDasharray="4 4" strokeOpacity={0.4} />
             <Tooltip
-              labelFormatter={(label) => new Date(label).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}
+              labelFormatter={(label: unknown) => {
+                if (typeof label !== "string" && typeof label !== "number") return "";
+                return new Date(label).toLocaleDateString("en-IN", {
+                  day: "2-digit",
+                  month: "short",
+                  year: "numeric",
+                });
+              }}
               formatter={(value) => [formatValue(Number(value)), "RSI"]}
             />
             <Line type="monotone" dataKey="rsi" dot={false} connectNulls={false} strokeWidth={2} />
