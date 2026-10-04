@@ -1,9 +1,8 @@
 from fastapi import APIRouter
 
 from app.schemas.market_data import StockQuote
-from app.services.market_data.nseix_gift_nifty_provider import (
-    NSEIXGiftNiftyProvider,
-)
+from app.services.market_data.ibja_gold_provider import IBJAGoldProvider
+from app.services.market_data.nse_gift_nifty_provider import NSEGiftniftyProvider
 from app.services.market_service import get_market_service
 
 
@@ -18,7 +17,6 @@ INDEX_SYMBOLS = {
     "BANK NIFTY": "^NSEBANK",
     "NIFTY MIDCAP": "^NSEMDCP50",
     "NIFTY SMALLCAP": "^CNXSC",
-    "GOLD": "GC=F",
     "CRUDE OIL": "CL=F",
     "NASDAQ": "^IXIC",
     "DOW JONES": "^DJI",
@@ -30,45 +28,22 @@ INDEX_SYMBOLS = {
 
 GIFT_NIFTY = "GIFT NIFTY"
 
-# Yahoo Finance quotes gold futures in USD per troy ounce. For an Indian
-# dashboard, display the equivalent INR value per 10 grams, which is the
-# conventional unit used for Indian gold pricing.
-TROY_OUNCE_GRAMS = 31.1034768
-GOLD_GRAMS = 10.0
 
-
-def _gold_to_inr_per_10g(
-    quote: StockQuote,
-    usd_inr: StockQuote,
-) -> StockQuote:
-    fx = usd_inr.price
-
-    if quote.price is None or fx is None or fx <= 0:
-        return quote
-
-    factor = fx * GOLD_GRAMS / TROY_OUNCE_GRAMS
-
-    quote.price *= factor
-    if quote.previous_close is not None:
-        quote.previous_close *= factor
-    if quote.open is not None:
-        quote.open *= factor
-    if quote.day_high is not None:
-        quote.day_high *= factor
-    if quote.day_low is not None:
-        quote.day_low *= factor
-    if quote.change is not None:
-        quote.change *= factor
-
-    quote.currency = "INR"
-    return quote
+def _get_gold_quote() -> StockQuote | None:
+    try:
+        return IBJAGoldProvider().get_quote("GOLD")
+    except Exception:
+        # Keep the dashboard available even when the Indian benchmark source
+        # is temporarily unavailable.
+        return None
 
 
 def _get_gift_nifty_quote() -> StockQuote | None:
     try:
-        return NSEIXGiftNiftyProvider().get_quote(GIFT_NIFTY)
+        return NSEGiftniftyProvider().get_quote(GIFT_NIFTY)
     except Exception:
-        # GIFT NIFTY must not prevent the other market cards from loading.
+        # Keep the rest of the market dashboard available if NSE's status feed
+        # is temporarily unavailable.
         return None
 
 
@@ -79,13 +54,12 @@ def _get_gift_nifty_quote() -> StockQuote | None:
 def get_indices():
     service = get_market_service()
     results: list[StockQuote] = []
-    usd_inr: StockQuote | None = None
 
-    # Fetch USD/INR once because it is also required to convert gold.
-    try:
-        usd_inr = service.get_quote(INDEX_SYMBOLS["USD/INR"])
-    except Exception:
-        usd_inr = None
+    # Use the Indian benchmark directly instead of converting COMEX futures.
+    gold = _get_gold_quote()
+    if gold is not None:
+        gold.symbol = "GOLD"
+        results.append(gold)
 
     for name, provider_symbol in INDEX_SYMBOLS.items():
         try:
@@ -93,27 +67,38 @@ def get_indices():
             if quote is None:
                 continue
 
-            if name == "GOLD":
-                if usd_inr is None or usd_inr.price is None:
-                    # Do not expose an unlabeled USD gold value as INR.
-                    continue
-                quote = _gold_to_inr_per_10g(
-                    quote,
-                    usd_inr,
-                )
-
             quote.symbol = name
             results.append(quote)
         except Exception:
             # One unavailable instrument must not hide the rest of the dashboard.
             continue
 
+    # Keep the frontend's requested order: GIFT NIFTY after NIFTY SMALLCAP.
     gift_nifty = _get_gift_nifty_quote()
     if gift_nifty is not None:
         gift_nifty.symbol = GIFT_NIFTY
-        results.insert(
-            4,
-            gift_nifty,
-        )
+
+        # Nifty-related entries occupy the first four positions. Gold was added
+        # separately above, so insert Gift Nifty before the commodity/global cards.
+        results.insert(4, gift_nifty)
+
+    # Return in deterministic dashboard order regardless of provider response
+    # timing or temporary source failures.
+    preferred_order = [
+        "NIFTY50",
+        "BANK NIFTY",
+        "NIFTY MIDCAP",
+        "NIFTY SMALLCAP",
+        "GIFT NIFTY",
+        "GOLD",
+        "CRUDE OIL",
+        "NASDAQ",
+        "DOW JONES",
+        "INDIA VIX",
+        "USD/INR",
+        "BRENT CRUDE",
+    ]
+    rank = {symbol: index for index, symbol in enumerate(preferred_order)}
+    results.sort(key=lambda item: rank.get(item.symbol, len(preferred_order)))
 
     return results
