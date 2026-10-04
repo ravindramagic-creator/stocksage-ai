@@ -1,6 +1,9 @@
 from fastapi import APIRouter
 
 from app.schemas.market_data import StockQuote
+from app.services.market_data.nseix_gift_nifty_provider import (
+    NSEIXGiftNiftyProvider,
+)
 from app.services.market_service import get_market_service
 
 
@@ -15,7 +18,6 @@ INDEX_SYMBOLS = {
     "BANK NIFTY": "^NSEBANK",
     "NIFTY MIDCAP": "^NSEMDCP50",
     "NIFTY SMALLCAP": "^CNXSC",
-    "GIFT NIFTY": "NIFTY1.NS",
     "GOLD": "GC=F",
     "CRUDE OIL": "CL=F",
     "NASDAQ": "^IXIC",
@@ -25,6 +27,8 @@ INDEX_SYMBOLS = {
     "USD/INR": "INR=X",
     "BRENT CRUDE": "BZ=F",
 }
+
+GIFT_NIFTY = "GIFT NIFTY"
 
 # Yahoo Finance quotes gold futures in USD per troy ounce. For an Indian
 # dashboard, display the equivalent INR value per 10 grams, which is the
@@ -58,6 +62,14 @@ def _gold_to_inr_per_10g(
 
     quote.currency = "INR"
     return quote
+
+
+def _get_gift_nifty_quote() -> StockQuote | None:
+    try:
+        return NSEIXGiftNiftyProvider().get_quote(GIFT_NIFTY)
+    except Exception:
+        # GIFT NIFTY must not prevent the other market cards from loading.
+        return None
 
 
 @router.get(
@@ -95,5 +107,13 @@ def get_indices():
         except Exception:
             # One unavailable instrument must not hide the rest of the dashboard.
             continue
+
+    gift_nifty = _get_gift_nifty_quote()
+    if gift_nifty is not None:
+        gift_nifty.symbol = GIFT_NIFTY
+        results.insert(
+            4,
+            gift_nifty,
+        )
 
     return results
