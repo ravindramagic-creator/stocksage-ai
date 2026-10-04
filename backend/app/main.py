@@ -19,6 +19,7 @@ from app.api.watchlist import router as watchlist_router
 from app.core.config import settings
 from app.db.init_db import initialize_database
 from app.services.auto_sales_worker import auto_sales_worker
+from app.services.market_snapshot_worker import market_snapshot_worker
 from app.services.screener_worker import screener_worker
 from app.services.universe_worker import universe_worker
 from app.services.update_worker import update_worker
@@ -31,15 +32,16 @@ async def lifespan(app: FastAPI):
     worker_task = asyncio.create_task(update_worker())
     auto_sales_task = asyncio.create_task(auto_sales_worker())
     universe_task = asyncio.create_task(universe_worker())
+    market_snapshot_task = asyncio.create_task(market_snapshot_worker())
     screener_task = asyncio.create_task(screener_worker())
 
     try:
         yield
     finally:
-        for task in (worker_task, auto_sales_task, universe_task, screener_task):
+        for task in (worker_task, auto_sales_task, universe_task, market_snapshot_task, screener_task):
             task.cancel()
 
-        for task in (worker_task, auto_sales_task, universe_task, screener_task):
+        for task in (worker_task, auto_sales_task, universe_task, market_snapshot_task, screener_task):
             try:
                 await task
             except asyncio.CancelledError:
