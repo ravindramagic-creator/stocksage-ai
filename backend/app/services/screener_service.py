@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 import math
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.financial_result import FinancialResult
@@ -13,7 +13,7 @@ from app.schemas.screener import ScreenerFilters, ScreenerResult
 
 
 class StockScreenerService:
-    """Database-only scoring engine. External market providers run in workers."""
+    """Database-only quality/value/momentum/confirmation screener."""
 
     def __init__(self, db: Session):
         self.db = db
@@ -70,30 +70,67 @@ class StockScreenerService:
         for row in rows[:4]:
             values = {str(v or "").strip().upper() for v in (row.revenue_result, row.pat_result, row.eps_result)}
             if "BEAT" in values:
-                outcomes.append(1.0)
+                outcomes.append(100.0)
             elif values.intersection({"MISS", "MEET", "MET"}):
                 outcomes.append(0.0)
-        return sum(outcomes) / len(outcomes) * 100.0 if outcomes else None
+        return sum(outcomes) / len(outcomes) if outcomes else None
+
+    @staticmethod
+    def _technical_confirmation(snap: MarketSnapshot) -> bool:
+        if snap.price is None or snap.sma50 is None or snap.sma200 is None:
+            return False
+        if snap.price <= snap.sma50 or snap.price <= snap.sma200 or snap.sma50 <= snap.sma200:
+            return False
+        if snap.momentum_6m is None or snap.momentum_6m <= 0:
+            return False
+        if snap.rsi14 is not None and not 45 <= snap.rsi14 <= 70:
+            return False
+        return True
+
+    @staticmethod
+    def _business_confirmation(revenue_growth, profit_growth, roe, roce, debt_to_equity) -> bool:
+        return (
+            revenue_growth is not None and revenue_growth >= 10
+            and profit_growth is not None and profit_growth >= 10
+            and roe is not None and roe >= 15
+            and roce is not None and roce >= 15
+            and (debt_to_equity is None or debt_to_equity <= 1.5)
+        )
+
+    @staticmethod
+    def _valuation_confirmation(pe, peg, pb) -> bool:
+        if pe is None or pe <= 0 or pe > 45:
+            return False
+        if peg is not None and (peg <= 0 or peg > 2.5):
+            return False
+        if pb is not None and pb > 8:
+            return False
+        return True
+
+    @staticmethod
+    def _analyst_confirmation(beat_rate, target_upside) -> bool:
+        return beat_rate is not None and beat_rate >= 50 and target_upside is not None and target_upside >= 5
 
     def screen(self, filters: ScreenerFilters, offset: int = 0) -> tuple[int, list[ScreenerResult]]:
-        # No Yahoo/NSE call is allowed on this path. MarketSnapshot is populated
-        # asynchronously by the market snapshot worker.
+        # The HTTP screener is DB-only. Market providers are refreshed by workers.
+        universe_limit = max(filters.universe_limit, filters.limit)
+        total_universe = self.db.scalar(
+            select(func.count()).select_from(Stock).where(Stock.exchange == "NSE")
+        ) or 0
         stocks = self.db.execute(
             select(Stock)
             .where(Stock.exchange == "NSE")
             .order_by(Stock.symbol)
             .offset(offset)
-            .limit(filters.limit)
+            .limit(universe_limit)
         ).scalars().all()
         if not stocks:
-            return 0, []
+            return total_universe, []
 
         symbols = [stock.symbol.upper() for stock in stocks]
         snapshots = {
             row.symbol.upper(): row
-            for row in self.db.execute(
-                select(MarketSnapshot).where(MarketSnapshot.symbol.in_(symbols))
-            ).scalars().all()
+            for row in self.db.execute(select(MarketSnapshot).where(MarketSnapshot.symbol.in_(symbols))).scalars().all()
         }
         grouped = self._latest_results(symbols)
         candidates: list[ScreenerResult] = []
@@ -101,7 +138,7 @@ class StockScreenerService:
         for stock in stocks:
             symbol = stock.symbol.upper()
             snap = snapshots.get(symbol)
-            if snap is None or snap.status != "ok":
+            if snap is None or snap.status not in {"ok", "partial"}:
                 continue
 
             rows = grouped.get(symbol, [])
@@ -127,16 +164,12 @@ class StockScreenerService:
 
             peg = snap.pe / eps_growth if snap.pe is not None and eps_growth and eps_growth > 0 else None
             fundamental_score = self._average([
-                self._score_higher(revenue_growth, 0, 25),
-                self._score_higher(profit_growth, 0, 30),
-                self._score_higher(eps_growth, 0, 30),
-                self._score_higher(snap.roe, 8, 25),
-                self._score_higher(snap.roce, 8, 25),
-                self._score_lower(snap.debt_to_equity, 0.25, 2.0),
+                self._score_higher(revenue_growth, 0, 25), self._score_higher(profit_growth, 0, 30),
+                self._score_higher(eps_growth, 0, 30), self._score_higher(snap.roe, 8, 25),
+                self._score_higher(snap.roce, 8, 25), self._score_lower(snap.debt_to_equity, 0.25, 2.0),
             ])
             valuation_score = self._average([
-                self._score_lower(snap.pe, 15, 45),
-                self._score_lower(peg, 1.0, 2.5),
+                self._score_lower(snap.pe, 15, 45), self._score_lower(peg, 1.0, 2.5),
                 self._score_lower(snap.pb, 2.0, 8.0),
             ])
 
@@ -160,12 +193,18 @@ class StockScreenerService:
                 continue
             total_weight = sum(weight for _, weight in available)
             score = sum(value * weight for value, weight in available) / total_weight
-            if score < filters.min_score:
-                continue
+
+            buy_confirmed = (
+                self._business_confirmation(revenue_growth, profit_growth, snap.roe, snap.roce, snap.debt_to_equity)
+                and self._valuation_confirmation(snap.pe, peg, snap.pb)
+                and self._technical_confirmation(snap)
+                and self._analyst_confirmation(beat_rate, snap.target_upside)
+                and score >= filters.min_score
+            )
 
             metric_values = [revenue_growth, profit_growth, eps_growth, snap.roe, snap.roce, snap.debt_to_equity, snap.pe, peg, snap.pb, snap.price, snap.sma50, snap.sma200, snap.rsi14, snap.momentum_6m, snap.target_upside, beat_rate]
             completeness = sum(value is not None for value in metric_values) / len(metric_values) * 100.0
-            verdict = "STRONG BUY CANDIDATE" if score >= 85 else "BUY CANDIDATE" if score >= 75 else "ACCUMULATE / WATCH" if score >= 65 else "WATCH" if score >= 50 else "AVOID"
+            verdict = "STRONG BUY" if buy_confirmed and score >= 85 else "BUY" if buy_confirmed else "WATCHLIST" if score >= 70 else "AVOID"
 
             candidates.append(ScreenerResult(
                 rank=0, symbol=symbol, company_name=stock.company_name, sector=stock.sector,
@@ -179,8 +218,8 @@ class StockScreenerService:
                 technical_score=technical_score, analyst_score=analyst_score,
             ))
 
-        candidates.sort(key=lambda item: (item.score, item.data_completeness), reverse=True)
+        candidates.sort(key=lambda item: (item.verdict not in {"BUY", "STRONG BUY"}, -item.score, -item.data_completeness))
         candidates = candidates[:filters.limit]
         for rank, item in enumerate(candidates, 1):
             item.rank = rank
-        return len(stocks), candidates
+        return total_universe, candidates
