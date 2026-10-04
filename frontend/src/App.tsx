@@ -7,6 +7,7 @@ import {
 import { Dashboard } from "./pages/Dashboard";
 import { StockPage } from "./pages/StockPage";
 import { AutoSalesPage } from "./pages/AutoSalesPage";
+import { ScreenerPage } from "./pages/ScreenerPage";
 
 
 function App() {
@@ -15,6 +16,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/stock/:symbol" element={<StockPage />} />
+        <Route path="/screener" element={<ScreenerPage />} />
         <Route path="/auto-sales" element={<AutoSalesPage />} />
       </Routes>
     </BrowserRouter>
