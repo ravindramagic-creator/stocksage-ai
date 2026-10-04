@@ -20,6 +20,10 @@ INDEX_SYMBOLS = {
     "CRUDE OIL": "CL=F",
     "NASDAQ": "^IXIC",
     "DOW JONES": "^DJI",
+    # Market-regime indicators used by the main-page Market Pulse.
+    "INDIA VIX": "^INDIAVIX",
+    "USD/INR": "INR=X",
+    "BRENT CRUDE": "BZ=F",
 }
 
 
@@ -39,6 +43,7 @@ def get_indices():
             quote.symbol = name
             results.append(quote)
         except Exception:
+            # One unavailable instrument must not hide the rest of the dashboard.
             continue
 
     return results
