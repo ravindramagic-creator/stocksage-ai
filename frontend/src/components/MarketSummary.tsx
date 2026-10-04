@@ -14,6 +14,10 @@ const DISPLAY_ORDER = [
 
 const PULSE_ORDER = ["INDIA VIX", "USD/INR", "BRENT CRUDE"];
 
+const DISPLAY_LABELS: Record<string, string> = {
+  GOLD: "GOLD (₹/10g)",
+};
+
 function MarketCard({
   symbol,
   price,
@@ -27,7 +31,9 @@ function MarketCard({
 
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
-      <div className="text-xs font-medium text-slate-500">{symbol}</div>
+      <div className="text-xs font-medium text-slate-500">
+        {DISPLAY_LABELS[symbol] ?? symbol}
+      </div>
       <div className="mt-2 text-xl font-bold text-white">
         {price?.toLocaleString("en-IN", { maximumFractionDigits: 2 }) ?? "—"}
       </div>
