@@ -44,11 +44,10 @@ class NSEUniverseService:
             try:
                 response = self.session.get(url, timeout=self.timeout)
                 response.raise_for_status()
-
                 text = response.content.decode("utf-8-sig")
                 reader = csv.DictReader(io.StringIO(text))
-
                 rows: list[dict[str, str]] = []
+
                 for raw in reader:
                     row = {
                         str(key or "").strip().upper(): str(value or "").strip()
@@ -58,8 +57,6 @@ class NSEUniverseService:
                     series = row.get("SERIES", "").upper()
                     company = row.get("NAME OF COMPANY", "").strip()
 
-                    # The equity master contains other series. The screener is
-                    # intended for normal NSE equity shares, including BE.
                     if not symbol or series not in {"EQ", "BE"} or not company:
                         continue
 
@@ -76,10 +73,7 @@ class NSEUniverseService:
                         f"NSE equity master returned only {len(rows)} equity rows"
                     )
 
-                # Protect the database from duplicate symbols in the source.
-                unique: dict[str, dict[str, str]] = {
-                    row["symbol"]: row for row in rows
-                }
+                unique = {row["symbol"]: row for row in rows}
                 result = list(unique.values())
                 logger.info("Fetched %d NSE equity symbols", len(result))
                 return result
@@ -91,11 +85,19 @@ class NSEUniverseService:
         raise RuntimeError("Unable to download NSE equity master") from last_error
 
     def refresh_database(self, db: Session) -> int:
+        # Download first. If NSE is unavailable, leave the last good snapshot intact.
         rows = self.fetch_equity_master()
+        source_symbols = {row["symbol"] for row in rows}
         existing = {
             stock.symbol.upper(): stock
             for stock in db.scalars(select(Stock)).all()
         }
+
+        # Preserve historical records, but keep delisted/removed symbols out of
+        # the active screener universe without introducing a schema migration.
+        for symbol, stock in existing.items():
+            if stock.exchange == "NSE" and symbol not in source_symbols:
+                stock.exchange = "NSEOLD"
 
         added = 0
         updated = 0
@@ -116,8 +118,6 @@ class NSEUniverseService:
                 added += 1
                 continue
 
-            # Keep user/derived sector information if already present, but keep
-            # the official company name current.
             if stock.company_name != row["company_name"]:
                 stock.company_name = row["company_name"]
                 updated += 1
