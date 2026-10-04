@@ -18,7 +18,7 @@ def get_screener(
     min_profit_growth: float = Query(10, ge=-100, le=500),
     min_market_cap: float = Query(5000, ge=0),
     limit: int = Query(10, ge=1, le=100),
-    universe_limit: int = Query(100, ge=20, le=1000),
+    universe_limit: int = Query(5000, ge=20, le=10000),
     db: Session = Depends(get_db),
 ):
     filters = ScreenerFilters(
@@ -37,10 +37,16 @@ def get_screener(
         total_universe=total_universe,
         screened=len(results),
         results=results,
-        data_source="StockSage financial database + Yahoo Finance market/fundamental provider",
+        data_source=(
+            "Official NSE equity master + StockSage financial database + "
+            "Yahoo Finance market/fundamental provider"
+        ),
         methodology=(
-            "50% fundamental (growth, ROE, ROCE, leverage), 20% valuation (PE, PEG, PB), "
-            "20% technical (50/200 DMA, RSI-14, 6-month momentum), 10% analyst (beat rate + target upside). "
+            "Full NSE equity universe. 50% fundamental (growth, ROE, ROCE, leverage), "
+            "20% valuation (PE, PEG, PB), 20% technical (50/200 DMA, RSI-14, "
+            "6-month momentum), 10% analyst (estimate beat rate + target upside). "
+            "NSE financial-result data is preferred; Yahoo Finance growth fields are "
+            "used as a fallback when a newly listed/unloaded stock has no local result rows. "
             "Missing metrics are excluded from component calculations and surfaced via completeness."
         ),
     )
