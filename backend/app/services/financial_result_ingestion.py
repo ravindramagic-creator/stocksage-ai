@@ -5,124 +5,42 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
-from app.repositories.financial_result_repository import (
-    FinancialResultRepository,
-)
-
-from app.services.nse_financial_result_provider import (
-    NSEFinancialResultProvider,
-)
-
-from app.services.indianapi_financial_result_provider import (
-    IndianAPIFinancialResultProvider,
-)
+from app.repositories.financial_result_repository import FinancialResultRepository
+from app.services.nse_financial_result_provider import NSEFinancialResultProvider
+from app.services.indianapi_financial_result_provider import IndianAPIFinancialResultProvider
 
 
 class FinancialResultIngestion:
     RESULT_TOLERANCE_PCT = Decimal("1.0")
 
-    def __init__(
-        self,
-        db: Session,
-    ):
+    def __init__(self, db: Session):
         self.db = db
-
-        self.repository = (
-            FinancialResultRepository(db)
-        )
-
-        self.nse_provider = (
-            NSEFinancialResultProvider()
-        )
-
-        self.indianapi_provider = (
-            IndianAPIFinancialResultProvider()
-        )
-
-    # =========================================================
-    # Growth
-    # =========================================================
+        self.repository = FinancialResultRepository(db)
+        self.nse_provider = NSEFinancialResultProvider()
+        self.indianapi_provider = IndianAPIFinancialResultProvider()
 
     @staticmethod
-    def calculate_growth(
-        current: Decimal | None,
-        previous: Decimal | None,
-    ) -> Decimal | None:
-
-        if current is None:
+    def calculate_growth(current: Decimal | None, previous: Decimal | None) -> Decimal | None:
+        if current is None or previous is None or previous == 0:
             return None
-
-        if previous is None:
-            return None
-
-        if previous == 0:
-            return None
-
-        return (
-            (current - previous)
-            / abs(previous)
-        ) * Decimal("100")
-
-    # =========================================================
-    # Surprise
-    # =========================================================
+        return ((current - previous) / abs(previous)) * Decimal("100")
 
     @staticmethod
-    def calculate_surprise(
-        actual: Decimal | None,
-        estimate: Decimal | None,
-    ) -> Decimal | None:
-
-        if actual is None:
+    def calculate_surprise(actual: Decimal | None, estimate: Decimal | None) -> Decimal | None:
+        if actual is None or estimate is None or estimate == 0:
             return None
-
-        if estimate is None:
-            return None
-
-        if estimate == 0:
-            return None
-
-        return (
-            (actual - estimate)
-            / abs(estimate)
-        ) * Decimal("100")
-
-    # =========================================================
-    # Result classification
-    # =========================================================
+        return ((actual - estimate) / abs(estimate)) * Decimal("100")
 
     @classmethod
-    def classify_result(
-        cls,
-        actual: Decimal | None,
-        estimate: Decimal | None,
-    ) -> str:
-
-        surprise = cls.calculate_surprise(
-            actual,
-            estimate,
-        )
-
+    def classify_result(cls, actual: Decimal | None, estimate: Decimal | None) -> str:
+        surprise = cls.calculate_surprise(actual, estimate)
         if surprise is None:
             return "UNKNOWN"
-
-        if (
-            surprise
-            > cls.RESULT_TOLERANCE_PCT
-        ):
+        if surprise > cls.RESULT_TOLERANCE_PCT:
             return "BEAT"
-
-        if (
-            surprise
-            < -cls.RESULT_TOLERANCE_PCT
-        ):
+        if surprise < -cls.RESULT_TOLERANCE_PCT:
             return "MISS"
-
         return "MEET"
-
-    # =========================================================
-    # Overall result
-    # =========================================================
 
     @staticmethod
     def calculate_overall_result(
@@ -131,777 +49,209 @@ class FinancialResultIngestion:
         pat_result: str | None,
         ebitda_result: str | None,
     ) -> str:
-
-        # Revenue + EPS are the primary metrics.
         primary = [
-            revenue_result,
-            eps_result,
+            value for value in (revenue_result, eps_result)
+            if value in {"BEAT", "MISS", "MEET"}
         ]
-
-        primary = [
-            value
-            for value in primary
-            if value in {
-                "BEAT",
-                "MISS",
-                "MEET",
-            }
-        ]
-
         if len(primary) == 2:
-
-            beats = primary.count("BEAT")
-            misses = primary.count("MISS")
-
-            if beats == 2:
+            if primary.count("BEAT") == 2:
                 return "BEAT"
-
-            if misses == 2:
+            if primary.count("MISS") == 2:
                 return "MISS"
 
-        # Fall back to all available metrics.
-        results = [
-            revenue_result,
-            eps_result,
-            pat_result,
-            ebitda_result,
-        ]
-
         results = [
             value
-            for value in results
-            if value in {
-                "BEAT",
-                "MISS",
-                "MEET",
-            }
+            for value in (revenue_result, eps_result, pat_result, ebitda_result)
+            if value in {"BEAT", "MISS", "MEET"}
         ]
-
         if not results:
             return "UNKNOWN"
 
         beats = results.count("BEAT")
         misses = results.count("MISS")
-
         if beats > misses:
             return "BEAT"
-
         if misses > beats:
             return "MISS"
-
         return "MEET"
-
-    # =========================================================
-    # Previous year
-    # =========================================================
 
     @staticmethod
     def find_previous_year(
         current_period: date,
-        values: dict[
-            date,
-            dict[str, Decimal | None],
-        ],
+        values: dict[date, dict[str, Decimal | None]],
     ):
-
         for candidate_period in values:
-
-            days_difference = (
-                current_period
-                - candidate_period
-            ).days
-
-            if (
-                330
-                <= days_difference
-                <= 400
-            ):
-                return values[
-                    candidate_period
-                ]
-
+            days_difference = (current_period - candidate_period).days
+            if 330 <= days_difference <= 400:
+                return values[candidate_period]
         return None
 
-    # =========================================================
-    # Ingest NSE actuals
-    # =========================================================
-
-    def ingest_nse(
-        self,
-        symbol: str,
-        limit: int = 40,
-    ) -> list:
-
+    def ingest_nse(self, symbol: str, limit: int = 40) -> list:
         symbol = symbol.upper().strip()
-
         if not symbol:
-            raise ValueError(
-                "Symbol cannot be empty"
-            )
+            raise ValueError("Symbol cannot be empty")
 
-        print(
-            f"Fetching NSE financial results "
-            f"for {symbol}"
-        )
-
-        provider_results = (
-            self.nse_provider.get_results(
-                symbol,
-                limit=limit,
-            )
-        )
-
+        print(f"Fetching NSE financial results for {symbol}")
+        provider_results = self.nse_provider.get_results(symbol, limit=limit)
         if not provider_results:
-            raise RuntimeError(
-                f"NSE returned no financial "
-                f"results for {symbol}"
-            )
+            raise RuntimeError(f"NSE returned no financial results for {symbol}")
 
         values = {}
-
         for item in provider_results:
-
-            period = item.get(
-                "period_ended"
-            )
-
+            period = item.get("period_ended")
             if period is None:
                 continue
-
             values[period] = {
-                "revenue": item.get(
-                    "revenue"
-                ),
-                "ebitda": item.get(
-                    "ebitda"
-                ),
-                "pat": item.get(
-                    "pat"
-                ),
-                "eps": item.get(
-                    "eps"
-                ),
+                "revenue": item.get("revenue"),
+                "ebitda": item.get("ebitda"),
+                "pat": item.get("pat"),
+                "eps": item.get("eps"),
             }
 
-        periods = sorted(
-            values.keys(),
-            reverse=True,
-        )
-
+        periods = sorted(values.keys(), reverse=True)
         if not periods:
-            raise RuntimeError(
-                f"No valid NSE periods for "
-                f"{symbol}"
-            )
+            raise RuntimeError(f"No valid NSE periods for {symbol}")
 
         results = []
-
-        for index, period in enumerate(
-            periods
-        ):
-
+        for index, period in enumerate(periods):
             current = values[period]
+            previous_quarter = values[periods[index + 1]] if index + 1 < len(periods) else None
+            previous_year = self.find_previous_year(period, values)
 
-            previous_quarter = None
+            revenue_yoy = self.calculate_growth(current["revenue"], previous_year.get("revenue") if previous_year else None)
+            revenue_qoq = self.calculate_growth(current["revenue"], previous_quarter.get("revenue") if previous_quarter else None)
+            ebitda_yoy = self.calculate_growth(current["ebitda"], previous_year.get("ebitda") if previous_year else None)
+            ebitda_qoq = self.calculate_growth(current["ebitda"], previous_quarter.get("ebitda") if previous_quarter else None)
+            pat_yoy = self.calculate_growth(current["pat"], previous_year.get("pat") if previous_year else None)
+            pat_qoq = self.calculate_growth(current["pat"], previous_quarter.get("pat") if previous_quarter else None)
+            eps_yoy = self.calculate_growth(current["eps"], previous_year.get("eps") if previous_year else None)
 
-            if index + 1 < len(periods):
-
-                previous_quarter = values[
-                    periods[index + 1]
-                ]
-
-            previous_year = (
-                self.find_previous_year(
-                    period,
-                    values,
-                )
-            )
-
-            revenue_yoy = (
-                self.calculate_growth(
-                    current["revenue"],
-                    (
-                        previous_year[
-                            "revenue"
-                        ]
-                        if previous_year
-                        else None
-                    ),
-                )
-            )
-
-            revenue_qoq = (
-                self.calculate_growth(
-                    current["revenue"],
-                    (
-                        previous_quarter[
-                            "revenue"
-                        ]
-                        if previous_quarter
-                        else None
-                    ),
-                )
-            )
-
-            ebitda_yoy = (
-                self.calculate_growth(
-                    current["ebitda"],
-                    (
-                        previous_year[
-                            "ebitda"
-                        ]
-                        if previous_year
-                        else None
-                    ),
-                )
-            )
-
-            ebitda_qoq = (
-                self.calculate_growth(
-                    current["ebitda"],
-                    (
-                        previous_quarter[
-                            "ebitda"
-                        ]
-                        if previous_quarter
-                        else None
-                    ),
-                )
-            )
-
-            pat_yoy = (
-                self.calculate_growth(
-                    current["pat"],
-                    (
-                        previous_year[
-                            "pat"
-                        ]
-                        if previous_year
-                        else None
-                    ),
-                )
-            )
-
-            pat_qoq = (
-                self.calculate_growth(
-                    current["pat"],
-                    (
-                        previous_quarter[
-                            "pat"
-                        ]
-                        if previous_quarter
-                        else None
-                    ),
-                )
-            )
-
-            eps_yoy = (
-                self.calculate_growth(
-                    current["eps"],
-                    (
-                        previous_year[
-                            "eps"
-                        ]
-                        if previous_year
-                        else None
-                    ),
-                )
-            )
-
-            # -------------------------------------------------
-            # Existing records MUST be updated.
-            # -------------------------------------------------
-
-            existing = (
-                self.repository.get_by_period(
-                    symbol,
-                    period,
-                )
-            )
+            existing = self.repository.get_by_period(symbol, period)
 
             summary_parts = []
-
             if revenue_yoy is not None:
-
-                summary_parts.append(
-                    f"Revenue "
-                    f"{revenue_yoy:+.1f}% YoY"
-                )
-
+                summary_parts.append(f"Revenue {revenue_yoy:+.1f}% YoY")
             if pat_yoy is not None:
-
-                summary_parts.append(
-                    f"PAT "
-                    f"{pat_yoy:+.1f}% YoY"
-                )
-
+                summary_parts.append(f"PAT {pat_yoy:+.1f}% YoY")
             if eps_yoy is not None:
-
-                summary_parts.append(
-                    f"EPS "
-                    f"{eps_yoy:+.1f}% YoY"
-                )
-
-            if summary_parts:
-
-                summary = (
-                    ", ".join(
-                        summary_parts
-                    )
-                    + "."
-                )
-
-            else:
-
-                summary = (
-                    "Quarterly financial "
-                    "results filed with NSE."
-                )
+                summary_parts.append(f"EPS {eps_yoy:+.1f}% YoY")
+            summary = ", ".join(summary_parts) + "." if summary_parts else "Quarterly financial results filed with NSE."
 
             if existing:
-
-                # Do NOT overwrite estimates.
-                existing.revenue = (
-                    current["revenue"]
-                )
-
-                existing.revenue_yoy = (
-                    revenue_yoy
-                )
-
-                existing.revenue_qoq = (
-                    revenue_qoq
-                )
-
-                existing.ebitda = (
-                    current["ebitda"]
-                )
-
-                existing.ebitda_yoy = (
-                    ebitda_yoy
-                )
-
-                existing.ebitda_qoq = (
-                    ebitda_qoq
-                )
-
-                existing.pat = (
-                    current["pat"]
-                )
-
-                existing.pat_yoy = (
-                    pat_yoy
-                )
-
-                existing.pat_qoq = (
-                    pat_qoq
-                )
-
-                existing.eps = (
-                    current["eps"]
-                )
-
-                existing.eps_yoy = (
-                    eps_yoy
-                )
+                # IMPORTANT: never replace a valid stored actual with None.
+                # Integrated XBRL can legitimately omit a fact for a filing.
+                if current["revenue"] is not None:
+                    existing.revenue = current["revenue"]
+                    existing.revenue_yoy = revenue_yoy
+                    existing.revenue_qoq = revenue_qoq
+                if current["ebitda"] is not None:
+                    existing.ebitda = current["ebitda"]
+                    existing.ebitda_yoy = ebitda_yoy
+                    existing.ebitda_qoq = ebitda_qoq
+                if current["pat"] is not None:
+                    existing.pat = current["pat"]
+                    existing.pat_yoy = pat_yoy
+                    existing.pat_qoq = pat_qoq
+                if current["eps"] is not None:
+                    existing.eps = current["eps"]
+                    existing.eps_yoy = eps_yoy
 
                 existing.summary = summary
-
                 existing.source = "NSE"
-
-                existing.source_url = (
-                    self.nse_provider.WEBSITE_URL
-                    + "?symbol="
-                    + symbol
-                )
-
+                existing.source_url = self.nse_provider.WEBSITE_URL + "?symbol=" + symbol
                 results.append(existing)
-
                 continue
 
-            result = (
-                self.repository.create(
-                    symbol=symbol,
-                    company_name=symbol,
-
-                    period_ended=period,
-                    period_type="Quarterly",
-                    consolidated=True,
-
-                    revenue=current[
-                        "revenue"
-                    ],
-
-                    revenue_yoy=revenue_yoy,
-                    revenue_qoq=revenue_qoq,
-
-                    ebitda=current[
-                        "ebitda"
-                    ],
-
-                    ebitda_yoy=ebitda_yoy,
-                    ebitda_qoq=ebitda_qoq,
-
-                    pat=current[
-                        "pat"
-                    ],
-
-                    pat_yoy=pat_yoy,
-                    pat_qoq=pat_qoq,
-
-                    eps=current[
-                        "eps"
-                    ],
-
-                    eps_yoy=eps_yoy,
-
-                    market_view=None,
-                    summary=summary,
-
-                    source="NSE",
-
-                    source_url=(
-                        self.nse_provider
-                        .WEBSITE_URL
-                        + "?symbol="
-                        + symbol
-                    ),
-
-                    broadcast_date=(
-                        datetime.now(
-                            timezone.utc
-                        )
-                    ),
-                )
+            result = self.repository.create(
+                symbol=symbol,
+                company_name=symbol,
+                period_ended=period,
+                period_type="Quarterly",
+                consolidated=True,
+                revenue=current["revenue"],
+                revenue_yoy=revenue_yoy,
+                revenue_qoq=revenue_qoq,
+                ebitda=current["ebitda"],
+                ebitda_yoy=ebitda_yoy,
+                ebitda_qoq=ebitda_qoq,
+                pat=current["pat"],
+                pat_yoy=pat_yoy,
+                pat_qoq=pat_qoq,
+                eps=current["eps"],
+                eps_yoy=eps_yoy,
+                market_view=None,
+                summary=summary,
+                source="NSE",
+                source_url=self.nse_provider.WEBSITE_URL + "?symbol=" + symbol,
+                broadcast_date=datetime.now(timezone.utc),
             )
-
             results.append(result)
 
         self.db.commit()
-
         return results
 
-    # =========================================================
-    # Apply IndianAPI historical consensus
-    # =========================================================
-
-    def sync_estimates(
-        self,
-        symbol: str,
-    ) -> list:
-
+    def sync_estimates(self, symbol: str) -> list:
         symbol = symbol.upper().strip()
-
         if not symbol:
-            raise ValueError(
-                "Symbol cannot be empty"
-            )
+            raise ValueError("Symbol cannot be empty")
 
-        print(
-            f"Fetching IndianAPI estimates "
-            f"for {symbol}"
-        )
-
-        consensus = (
-            self.indianapi_provider.get_historical(
-                symbol
-            )
-        )
-
+        print(f"Fetching IndianAPI estimates for {symbol}")
+        consensus = self.indianapi_provider.get_historical(symbol)
         if not consensus:
-
-            print(
-                "IndianAPI returned no "
-                "historical consensus data "
-                f"for {symbol}"
-            )
-
+            print(f"IndianAPI returned no historical consensus data for {symbol}")
             return []
 
-        # -----------------------------------------------------
-        # Group metrics by period
-        # -----------------------------------------------------
-
         grouped = {}
-
         for item in consensus:
-
             if not item.is_historical:
                 continue
-
-            period = item.period_ended
-
-            if period not in grouped:
-                grouped[period] = {}
-
-            grouped[period][
-                item.metric
-            ] = item
+            grouped.setdefault(item.period_ended, {})[item.metric] = item
 
         updated = []
-
         for period, metrics in grouped.items():
-
-            result = (
-                self.repository.get_by_period(
-                    symbol,
-                    period,
-                )
-            )
-
-            # If NSE doesn't have this period,
-            # don't create an artificial result.
+            result = self.repository.get_by_period(symbol, period)
             if result is None:
                 continue
 
-            # -------------------------------------------------
-            # Revenue
-            # -------------------------------------------------
+            for metric_name, prefix in (
+                ("revenue", "revenue"),
+                ("ebitda", "ebitda"),
+                ("pat", "pat"),
+                ("eps", "eps"),
+            ):
+                item = metrics.get(metric_name)
+                if not item:
+                    continue
 
-            revenue_item = metrics.get(
-                "revenue"
+                setattr(result, f"{prefix}_estimate", item.estimate)
+                surprise = item.surprise_percent
+                if surprise is None:
+                    surprise = self.calculate_surprise(getattr(result, prefix), item.estimate)
+                setattr(result, f"{prefix}_surprise_pct", surprise)
+                setattr(result, f"{prefix}_result", self.classify_result(getattr(result, prefix), item.estimate))
+
+            result.overall_result = self.calculate_overall_result(
+                result.revenue_result,
+                result.eps_result,
+                result.pat_result,
+                result.ebitda_result,
             )
-
-            if revenue_item:
-
-                result.revenue_estimate = (
-                    revenue_item.estimate
-                )
-
-                # Prefer IndianAPI's supplied
-                # historical surprise.
-                if (
-                    revenue_item
-                    .surprise_percent
-                    is not None
-                ):
-
-                    result.revenue_surprise_pct = (
-                        revenue_item
-                        .surprise_percent
-                    )
-
-                else:
-
-                    result.revenue_surprise_pct = (
-                        self.calculate_surprise(
-                            result.revenue,
-                            revenue_item.estimate,
-                        )
-                    )
-
-                result.revenue_result = (
-                    self.classify_result(
-                        result.revenue,
-                        revenue_item.estimate,
-                    )
-                )
-
-            # -------------------------------------------------
-            # EBITDA
-            # -------------------------------------------------
-
-            ebitda_item = metrics.get(
-                "ebitda"
-            )
-
-            if ebitda_item:
-
-                result.ebitda_estimate = (
-                    ebitda_item.estimate
-                )
-
-                if (
-                    ebitda_item
-                    .surprise_percent
-                    is not None
-                ):
-
-                    result.ebitda_surprise_pct = (
-                        ebitda_item
-                        .surprise_percent
-                    )
-
-                else:
-
-                    result.ebitda_surprise_pct = (
-                        self.calculate_surprise(
-                            result.ebitda,
-                            ebitda_item.estimate,
-                        )
-                    )
-
-                result.ebitda_result = (
-                    self.classify_result(
-                        result.ebitda,
-                        ebitda_item.estimate,
-                    )
-                )
-
-            # -------------------------------------------------
-            # PAT
-            # -------------------------------------------------
-
-            pat_item = metrics.get(
-                "pat"
-            )
-
-            if pat_item:
-
-                result.pat_estimate = (
-                    pat_item.estimate
-                )
-
-                if (
-                    pat_item
-                    .surprise_percent
-                    is not None
-                ):
-
-                    result.pat_surprise_pct = (
-                        pat_item
-                        .surprise_percent
-                    )
-
-                else:
-
-                    result.pat_surprise_pct = (
-                        self.calculate_surprise(
-                            result.pat,
-                            pat_item.estimate,
-                        )
-                    )
-
-                result.pat_result = (
-                    self.classify_result(
-                        result.pat,
-                        pat_item.estimate,
-                    )
-                )
-
-            # -------------------------------------------------
-            # EPS
-            # -------------------------------------------------
-
-            eps_item = metrics.get(
-                "eps"
-            )
-
-            if eps_item:
-
-                result.eps_estimate = (
-                    eps_item.estimate
-                )
-
-                if (
-                    eps_item
-                    .surprise_percent
-                    is not None
-                ):
-
-                    result.eps_surprise_pct = (
-                        eps_item
-                        .surprise_percent
-                    )
-
-                else:
-
-                    result.eps_surprise_pct = (
-                        self.calculate_surprise(
-                            result.eps,
-                            eps_item.estimate,
-                        )
-                    )
-
-                result.eps_result = (
-                    self.classify_result(
-                        result.eps,
-                        eps_item.estimate,
-                    )
-                )
-
-            # -------------------------------------------------
-            # Overall
-            # -------------------------------------------------
-
-            result.overall_result = (
-                self.calculate_overall_result(
-                    result.revenue_result,
-                    result.eps_result,
-                    result.pat_result,
-                    result.ebitda_result,
-                )
-            )
-
             updated.append(result)
 
         self.db.commit()
-
-        print(
-            f"Updated {len(updated)} "
-            f"financial results with "
-            f"IndianAPI estimates"
-        )
-
+        print(f"Updated {len(updated)} financial results with IndianAPI estimates")
         return updated
 
-    # =========================================================
-    # Main ingestion
-    # =========================================================
-
-    def ingest(
-        self,
-        symbol: str,
-        limit: int = 40,
-    ) -> list:
-
+    def ingest(self, symbol: str, limit: int = 40) -> list:
         symbol = symbol.upper().strip()
-
         if not symbol:
-            raise ValueError(
-                "Symbol cannot be empty"
-            )
+            raise ValueError("Symbol cannot be empty")
 
-        # -----------------------------------------------------
-        # STEP 1
-        # NSE actual results
-        # -----------------------------------------------------
-
-        results = self.ingest_nse(
-            symbol,
-            limit,
-        )
-
-        # -----------------------------------------------------
-        # STEP 2
-        # IndianAPI historical estimates
-        #
-        # Do not fail the entire NSE sync if
-        # IndianAPI is temporarily unavailable.
-        # -----------------------------------------------------
-
+        self.ingest_nse(symbol, limit)
         try:
-
-            self.sync_estimates(
-                symbol
-            )
-
+            self.sync_estimates(symbol)
         except Exception as exc:
-
-            print(
-                "WARNING: IndianAPI estimate "
-                f"sync failed for {symbol}: "
-                f"{exc}"
-            )
-
-        # -----------------------------------------------------
-        # STEP 3
-        # Reload updated records.
-        # -----------------------------------------------------
+            print(f"WARNING: IndianAPI estimate sync failed for {symbol}: {exc}")
 
         self.db.expire_all()
-
-        return self.repository.get_recent(
-            symbol=symbol,
-            limit=limit,
-        )
+        return self.repository.get_recent(symbol=symbol, limit=limit)
