@@ -19,26 +19,40 @@ class ScreenerSnapshotService:
 
     def refresh(self, universe_limit: int = 5000) -> int:
         version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S") + "-" + uuid4().hex[:8]
-        filters = ScreenerFilters(
-            min_score=0,
-            min_roe=-100,
-            max_pe=500,
-            max_debt_to_equity=20,
-            min_revenue_growth=-100,
-            min_profit_growth=-100,
-            min_market_cap=0,
-            limit=universe_limit,
-            universe_limit=universe_limit,
-        )
+        # The public API limits `limit` to 100. A snapshot needs the whole
+        # universe, so calculate in batches and merge the results here.
+        batch_size = 100
+        all_results = []
+        offset = 0
 
-        _, results = StockScreenerService(self.db).screen(filters)
-        if not results:
+        while offset < universe_limit:
+            batch_limit = min(batch_size, universe_limit - offset)
+            filters = ScreenerFilters(
+                min_score=0,
+                min_roe=-100,
+                max_pe=500,
+                max_debt_to_equity=20,
+                min_revenue_growth=-100,
+                min_profit_growth=-100,
+                min_market_cap=0,
+                limit=batch_limit,
+                universe_limit=universe_limit,
+            )
+            _, results = StockScreenerService(self.db).screen(filters, offset=offset)
+            if not results:
+                break
+            all_results.extend(results)
+            offset += len(results)
+            if len(results) < batch_limit:
+                break
+
+        if not all_results:
             return 0
 
         self.db.execute(delete(ScreenerSnapshot))
         now = datetime.now(timezone.utc)
 
-        for result in results:
+        for result in all_results:
             self.db.add(
                 ScreenerSnapshot(
                     symbol=result.symbol,
@@ -74,13 +88,10 @@ class ScreenerSnapshotService:
             )
 
         self.db.commit()
-        return len(results)
+        return len(all_results)
 
     def get_results(self, filters: ScreenerFilters) -> tuple[int, list[ScreenerResult], datetime | None]:
-        stocks_count = self.db.execute(
-            select(ScreenerSnapshot.symbol).distinct()
-        ).all()
-
+        stocks_count = self.db.execute(select(ScreenerSnapshot.symbol).distinct()).all()
         query = select(ScreenerSnapshot).order_by(
             ScreenerSnapshot.score.desc(),
             ScreenerSnapshot.data_completeness.desc(),
