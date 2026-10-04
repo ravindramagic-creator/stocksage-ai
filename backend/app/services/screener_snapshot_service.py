@@ -18,11 +18,17 @@ class ScreenerSnapshotService:
         self.db = db
 
     def refresh(self, universe_limit: int = 5000) -> int:
-        version = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S") + "-" + uuid4().hex[:8]
-        # The public API limits `limit` to 100. A snapshot needs the whole
-        # universe, so calculate in batches and merge the results here.
+        version = (
+            datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+            + "-"
+            + uuid4().hex[:8]
+        )
+
+        # Process the underlying Stock rows in fixed-size batches. The cursor
+        # must advance by rows scanned, not by candidates returned, otherwise
+        # a batch with few matches causes the same stocks to be processed again.
         batch_size = 100
-        all_results = []
+        all_results_by_symbol: dict[str, ScreenerResult] = {}
         offset = 0
 
         while offset < universe_limit:
@@ -36,15 +42,37 @@ class ScreenerSnapshotService:
                 min_profit_growth=-100,
                 min_market_cap=0,
                 limit=batch_limit,
-                universe_limit=universe_limit,
+                universe_limit=batch_limit,
             )
-            _, results = StockScreenerService(self.db).screen(filters, offset=offset)
-            if not results:
+
+            total_universe, results = StockScreenerService(self.db).screen(
+                filters,
+                offset=offset,
+            )
+
+            for result in results:
+                symbol = result.symbol.upper()
+                previous = all_results_by_symbol.get(symbol)
+                if (
+                    previous is None
+                    or (result.score, result.data_completeness)
+                    > (previous.score, previous.data_completeness)
+                ):
+                    all_results_by_symbol[symbol] = result
+
+            offset += batch_limit
+            if offset >= total_universe:
                 break
-            all_results.extend(results)
-            offset += len(results)
-            if len(results) < batch_limit:
-                break
+
+        all_results = sorted(
+            all_results_by_symbol.values(),
+            key=lambda item: (
+                item.verdict not in {"BUY", "STRONG BUY"},
+                -item.score,
+                -item.data_completeness,
+                item.symbol,
+            ),
+        )
 
         if not all_results:
             return 0
@@ -90,16 +118,30 @@ class ScreenerSnapshotService:
         self.db.commit()
         return len(all_results)
 
-    def get_results(self, filters: ScreenerFilters) -> tuple[int, list[ScreenerResult], datetime | None]:
-        stocks_count = self.db.execute(select(ScreenerSnapshot.symbol).distinct()).all()
+    def get_results(
+        self,
+        filters: ScreenerFilters,
+    ) -> tuple[int, list[ScreenerResult], datetime | None]:
+        stocks_count = self.db.execute(
+            select(ScreenerSnapshot.symbol).distinct()
+        ).all()
+
         query = select(ScreenerSnapshot).order_by(
             ScreenerSnapshot.score.desc(),
             ScreenerSnapshot.data_completeness.desc(),
+            ScreenerSnapshot.symbol.asc(),
         )
         rows = self.db.execute(query).scalars().all()
 
         results: list[ScreenerResult] = []
+        seen_symbols: set[str] = set()
+
         for row in rows:
+            symbol = row.symbol.upper()
+            if symbol in seen_symbols:
+                continue
+            seen_symbols.add(symbol)
+
             if row.score < filters.min_score:
                 continue
             if row.roe is not None and row.roe < filters.min_roe:
