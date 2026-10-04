@@ -21,15 +21,30 @@ class YFinanceProvider(
         symbol: str,
     ) -> str:
 
-        symbol = symbol.upper()
+        symbol = symbol.upper().strip()
 
-        if symbol in {
-            "^NSEI",
-            "^BSESN",
-        }:
-            return symbol
-
-        if symbol.endswith(".NS"):
+        # Yahoo Finance uses its own symbol namespace for indices, futures,
+        # currencies and other global instruments. These symbols must be
+        # passed through unchanged; appending ".NS" makes them invalid.
+        #
+        # Examples:
+        #   ^NSEI       -> ^NSEI
+        #   ^NSEBANK    -> ^NSEBANK
+        #   ^NSEMDCP50  -> ^NSEMDCP50
+        #   ^CNXSC      -> ^CNXSC
+        #   ^INDIAVIX   -> ^INDIAVIX
+        #   ^IXIC       -> ^IXIC
+        #   ^DJI        -> ^DJI
+        #   GC=F        -> GC=F
+        #   CL=F        -> CL=F
+        #   BZ=F        -> BZ=F
+        #   INR=X       -> INR=X
+        if (
+            symbol.startswith("^")
+            or "=" in symbol
+            or symbol.endswith(".NS")
+            or symbol.endswith(".BO")
+        ):
             return symbol
 
         return f"{symbol}.NS"
