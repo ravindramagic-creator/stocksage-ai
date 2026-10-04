@@ -3,32 +3,20 @@ from __future__ import annotations
 from collections import defaultdict
 import math
 
-import yfinance as yf
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.financial_result import FinancialResult
+from app.models.market_snapshot import MarketSnapshot
 from app.models.stock import Stock
 from app.schemas.screener import ScreenerFilters, ScreenerResult
-from app.services.market_service import get_market_service
 
 
 class StockScreenerService:
-    """Rank the NSE universe using fundamental, valuation, technical and analyst signals."""
+    """Database-only scoring engine. External market providers run in workers."""
 
     def __init__(self, db: Session):
         self.db = db
-        self.market = get_market_service()
-
-    @staticmethod
-    def _float(value) -> float | None:
-        try:
-            if value is None:
-                return None
-            number = float(value)
-            return number if math.isfinite(number) else None
-        except (TypeError, ValueError):
-            return None
 
     @staticmethod
     def _score_higher(value: float | None, poor: float, good: float) -> float | None:
@@ -56,50 +44,15 @@ class StockScreenerService:
         return sum(clean) / len(clean) if clean else None
 
     @staticmethod
-    def _rsi(closes: list[float], period: int = 14) -> float | None:
-        if len(closes) <= period:
+    def _float(value) -> float | None:
+        try:
+            number = float(value) if value is not None else None
+            return number if number is not None and math.isfinite(number) else None
+        except (TypeError, ValueError):
             return None
-        changes = [b - a for a, b in zip(closes[-period - 1:], closes[-period:])]
-        gains = [max(change, 0.0) for change in changes]
-        losses = [max(-change, 0.0) for change in changes]
-        avg_gain = sum(gains) / period
-        avg_loss = sum(losses) / period
-        if avg_loss == 0:
-            return 100.0 if avg_gain > 0 else 50.0
-        rs = avg_gain / avg_loss
-        return 100.0 - (100.0 / (1.0 + rs))
 
-    @staticmethod
-    def _normalise_percent(value: float | None) -> float | None:
-        if value is None:
-            return None
-        return value * 100.0 if abs(value) <= 1.5 else value
-
-    @staticmethod
-    def _normalise_debt_to_equity(value: float | None) -> float | None:
-        if value is None:
-            return None
-        return value / 100.0 if abs(value) > 10.0 else value
-
-    @classmethod
-    def _roce(cls, info: dict) -> float | None:
-        for key in ("returnOnCapitalEmployed", "returnOnCapital"):
-            value = cls._float(info.get(key))
-            if value is not None:
-                return cls._normalise_percent(value)
-        ebitda = cls._float(info.get("ebitda"))
-        depreciation = cls._float(info.get("depreciation"))
-        assets = cls._float(info.get("totalAssets"))
-        current_liabilities = cls._float(info.get("totalCurrentLiabilities"))
-        if ebitda is None or assets is None or current_liabilities is None:
-            return None
-        ebit = ebitda - depreciation if depreciation is not None else ebitda
-        capital_employed = assets - current_liabilities
-        return (ebit / capital_employed) * 100.0 if capital_employed > 0 else None
-
-    @staticmethod
-    def _latest_results(db: Session, symbols: list[str]) -> dict[str, list[FinancialResult]]:
-        rows = db.execute(
+    def _latest_results(self, symbols: list[str]) -> dict[str, list[FinancialResult]]:
+        rows = self.db.execute(
             select(FinancialResult)
             .where(FinancialResult.symbol.in_(symbols))
             .order_by(FinancialResult.symbol, FinancialResult.period_ended.desc())
@@ -111,30 +64,20 @@ class StockScreenerService:
                 grouped[key].append(row)
         return grouped
 
-    def _fundamentals(self, symbol: str, price: float | None) -> dict[str, float | None]:
-        values = {"market_cap": None, "pe": None, "pb": None, "roe": None, "roce": None,
-                  "debt_to_equity": None, "revenue_growth": None, "profit_growth": None,
-                  "eps_growth": None, "target_upside": None}
-        try:
-            ticker = yf.Ticker(self.market.provider._ticker_symbol(symbol))
-            info = ticker.info or {}
-            values["market_cap"] = self._float(info.get("marketCap"))
-            values["pe"] = self._float(info.get("trailingPE"))
-            values["pb"] = self._float(info.get("priceToBook"))
-            values["roe"] = self._normalise_percent(self._float(info.get("returnOnEquity")))
-            values["roce"] = self._roce(info)
-            values["debt_to_equity"] = self._normalise_debt_to_equity(self._float(info.get("debtToEquity")))
-            values["revenue_growth"] = self._normalise_percent(self._float(info.get("revenueGrowth")))
-            values["profit_growth"] = self._normalise_percent(self._float(info.get("earningsGrowth") if info.get("earningsGrowth") is not None else info.get("earningsQuarterlyGrowth")))
-            values["eps_growth"] = values["profit_growth"]
-            target = self._float(info.get("targetMeanPrice"))
-            if target is not None and price and price > 0:
-                values["target_upside"] = (target / price - 1.0) * 100.0
-        except Exception:
-            pass
-        return values
+    @staticmethod
+    def _beat_rate(rows: list[FinancialResult]) -> float | None:
+        outcomes: list[float] = []
+        for row in rows[:4]:
+            values = {str(v or "").strip().upper() for v in (row.revenue_result, row.pat_result, row.eps_result)}
+            if "BEAT" in values:
+                outcomes.append(1.0)
+            elif values.intersection({"MISS", "MEET", "MET"}):
+                outcomes.append(0.0)
+        return sum(outcomes) / len(outcomes) * 100.0 if outcomes else None
 
     def screen(self, filters: ScreenerFilters, offset: int = 0) -> tuple[int, list[ScreenerResult]]:
+        # No Yahoo/NSE call is allowed on this path. MarketSnapshot is populated
+        # asynchronously by the market snapshot worker.
         stocks = self.db.execute(
             select(Stock)
             .where(Stock.exchange == "NSE")
@@ -146,79 +89,98 @@ class StockScreenerService:
             return 0, []
 
         symbols = [stock.symbol.upper() for stock in stocks]
-        grouped = self._latest_results(self.db, symbols)
+        snapshots = {
+            row.symbol.upper(): row
+            for row in self.db.execute(
+                select(MarketSnapshot).where(MarketSnapshot.symbol.in_(symbols))
+            ).scalars().all()
+        }
+        grouped = self._latest_results(symbols)
         candidates: list[ScreenerResult] = []
 
         for stock in stocks:
             symbol = stock.symbol.upper()
+            snap = snapshots.get(symbol)
+            if snap is None or snap.status != "ok":
+                continue
+
             rows = grouped.get(symbol, [])
             latest = rows[0] if rows else None
-            price = None
-            try:
-                quote = self.market.get_quote(symbol)
-                price = self._float(quote.price) if quote is not None else None
-            except Exception:
-                pass
+            revenue_growth = self._float(latest.revenue_yoy) if latest and latest.revenue_yoy is not None else snap.revenue_growth
+            profit_growth = self._float(latest.pat_yoy) if latest and latest.pat_yoy is not None else snap.profit_growth
+            eps_growth = self._float(latest.eps_yoy) if latest and latest.eps_yoy is not None else profit_growth
+            beat_rate = self._beat_rate(rows)
+            beat_rate = beat_rate if beat_rate is not None else snap.analyst_beat_rate
 
-            fundamentals = self._fundamentals(symbol, price)
-            revenue_growth = self._float(latest.revenue_yoy) if latest and latest.revenue_yoy is not None else fundamentals["revenue_growth"]
-            profit_growth = self._float(latest.pat_yoy) if latest and latest.pat_yoy is not None else fundamentals["profit_growth"]
-            eps_growth = self._float(latest.eps_yoy) if latest and latest.eps_yoy is not None else fundamentals["eps_growth"]
-            market_cap, pe, pb = fundamentals["market_cap"], fundamentals["pe"], fundamentals["pb"]
-            roe, roce, debt_to_equity = fundamentals["roe"], fundamentals["roce"], fundamentals["debt_to_equity"]
-            target_upside = fundamentals["target_upside"]
-
-            if revenue_growth is None or revenue_growth < filters.min_revenue_growth or profit_growth is None or profit_growth < filters.min_profit_growth:
+            if revenue_growth is None or revenue_growth < filters.min_revenue_growth:
                 continue
-            if (roe is not None and roe < filters.min_roe) or (pe is not None and pe > filters.max_pe) or (debt_to_equity is not None and debt_to_equity > filters.max_debt_to_equity) or (market_cap is not None and market_cap < filters.min_market_cap * 10_000_000):
+            if profit_growth is None or profit_growth < filters.min_profit_growth:
+                continue
+            if snap.roe is not None and snap.roe < filters.min_roe:
+                continue
+            if snap.pe is not None and snap.pe > filters.max_pe:
+                continue
+            if snap.debt_to_equity is not None and snap.debt_to_equity > filters.max_debt_to_equity:
+                continue
+            if snap.market_cap is not None and snap.market_cap < filters.min_market_cap * 10_000_000:
                 continue
 
-            sma50 = sma200 = rsi14 = momentum6m = None
-            try:
-                history = self.market.get_history(symbol, "1y", "1d")
-                closes = [point.close for point in history.points if point.close is not None]
-                if price is None and closes:
-                    price = closes[-1]
-                if len(closes) >= 50: sma50 = sum(closes[-50:]) / 50.0
-                if len(closes) >= 200: sma200 = sum(closes[-200:]) / 200.0
-                rsi14 = self._rsi(closes)
-                if len(closes) >= 2:
-                    lookback = min(126, len(closes) - 1)
-                    momentum6m = (closes[-1] / closes[-1 - lookback] - 1.0) * 100.0
-            except Exception:
-                pass
+            peg = snap.pe / eps_growth if snap.pe is not None and eps_growth and eps_growth > 0 else None
+            fundamental_score = self._average([
+                self._score_higher(revenue_growth, 0, 25),
+                self._score_higher(profit_growth, 0, 30),
+                self._score_higher(eps_growth, 0, 30),
+                self._score_higher(snap.roe, 8, 25),
+                self._score_higher(snap.roce, 8, 25),
+                self._score_lower(snap.debt_to_equity, 0.25, 2.0),
+            ])
+            valuation_score = self._average([
+                self._score_lower(snap.pe, 15, 45),
+                self._score_lower(peg, 1.0, 2.5),
+                self._score_lower(snap.pb, 2.0, 8.0),
+            ])
 
-            beat_rate = None
-            if rows:
-                outcomes = []
-                for row in rows[:4]:
-                    results = {str(value or "").strip().upper() for value in (row.revenue_result, row.pat_result, row.eps_result)}
-                    known = results.intersection({"BEAT", "MISS", "MEET", "MET"})
-                    if known: outcomes.append(1.0 if "BEAT" in known else 0.0)
-                if outcomes: beat_rate = sum(outcomes) / len(outcomes) * 100.0
-
-            peg = pe / eps_growth if pe is not None and eps_growth is not None and eps_growth > 0 else None
-            fundamental_score = self._average([self._score_higher(revenue_growth, 0, 25), self._score_higher(profit_growth, 0, 30), self._score_higher(eps_growth, 0, 30), self._score_higher(roe, 8, 25), self._score_higher(roce, 8, 25), self._score_lower(debt_to_equity, 0.25, 2.0)])
-            valuation_score = self._average([self._score_lower(pe, 15, 45), self._score_lower(peg, 1.0, 2.5), self._score_lower(pb, 2.0, 8.0)])
-            technical_parts = []
-            if price is not None and sma50 is not None: technical_parts.append(100.0 if price > sma50 else 20.0)
-            if price is not None and sma200 is not None: technical_parts.append(100.0 if price > sma200 else 20.0)
-            if sma50 is not None and sma200 is not None: technical_parts.append(100.0 if sma50 > sma200 else 25.0)
-            if rsi14 is not None: technical_parts.append(100.0 if 50 <= rsi14 <= 65 else 75.0 if 45 <= rsi14 < 50 or 65 < rsi14 <= 70 else 50.0 if 35 <= rsi14 < 45 or 70 < rsi14 <= 75 else 20.0)
-            if momentum6m is not None: technical_parts.append(self._score_higher(momentum6m, -20, 25) or 0.0)
+            technical_parts: list[float | None] = []
+            if snap.price is not None and snap.sma50 is not None:
+                technical_parts.append(100.0 if snap.price > snap.sma50 else 20.0)
+            if snap.price is not None and snap.sma200 is not None:
+                technical_parts.append(100.0 if snap.price > snap.sma200 else 20.0)
+            if snap.sma50 is not None and snap.sma200 is not None:
+                technical_parts.append(100.0 if snap.sma50 > snap.sma200 else 25.0)
+            if snap.rsi14 is not None:
+                technical_parts.append(100.0 if 50 <= snap.rsi14 <= 65 else 75.0 if 45 <= snap.rsi14 < 50 or 65 < snap.rsi14 <= 70 else 50.0 if 35 <= snap.rsi14 < 45 or 70 < snap.rsi14 <= 75 else 20.0)
+            if snap.momentum_6m is not None:
+                technical_parts.append(self._score_higher(snap.momentum_6m, -20, 25))
             technical_score = self._average(technical_parts)
-            analyst_score = self._average([beat_rate, self._score_higher(target_upside, 0, 30)])
-            available = [(c, w) for c, w in [(fundamental_score, .50), (valuation_score, .20), (technical_score, .20), (analyst_score, .10)] if c is not None]
-            if not available: continue
-            total_weight = sum(w for _, w in available)
-            score = sum(c * w for c, w in available) / total_weight
-            metric_values = [revenue_growth, profit_growth, eps_growth, roe, roce, debt_to_equity, pe, peg, pb, price, sma50, sma200, rsi14, momentum6m, target_upside, beat_rate]
-            completeness = sum(v is not None for v in metric_values) / len(metric_values) * 100.0
-            if score < filters.min_score: continue
+            analyst_score = self._average([beat_rate, self._score_higher(snap.target_upside, 0, 30)])
+
+            weighted = [(fundamental_score, .50), (valuation_score, .20), (technical_score, .20), (analyst_score, .10)]
+            available = [(value, weight) for value, weight in weighted if value is not None]
+            if not available:
+                continue
+            total_weight = sum(weight for _, weight in available)
+            score = sum(value * weight for value, weight in available) / total_weight
+            if score < filters.min_score:
+                continue
+
+            metric_values = [revenue_growth, profit_growth, eps_growth, snap.roe, snap.roce, snap.debt_to_equity, snap.pe, peg, snap.pb, snap.price, snap.sma50, snap.sma200, snap.rsi14, snap.momentum_6m, snap.target_upside, beat_rate]
+            completeness = sum(value is not None for value in metric_values) / len(metric_values) * 100.0
             verdict = "STRONG BUY CANDIDATE" if score >= 85 else "BUY CANDIDATE" if score >= 75 else "ACCUMULATE / WATCH" if score >= 65 else "WATCH" if score >= 50 else "AVOID"
-            candidates.append(ScreenerResult(rank=0, symbol=symbol, company_name=stock.company_name, sector=stock.sector, score=round(score, 2), verdict=verdict, data_completeness=round(completeness, 1), price=price, market_cap=market_cap, pe=pe, peg=peg, pb=pb, roe=roe, roce=roce, debt_to_equity=debt_to_equity, revenue_growth=revenue_growth, profit_growth=profit_growth, eps_growth=eps_growth, sma50=sma50, sma200=sma200, rsi14=rsi14, momentum_6m=momentum6m, target_upside=target_upside, analyst_beat_rate=beat_rate, fundamental_score=fundamental_score, valuation_score=valuation_score, technical_score=technical_score, analyst_score=analyst_score))
+
+            candidates.append(ScreenerResult(
+                rank=0, symbol=symbol, company_name=stock.company_name, sector=stock.sector,
+                score=round(score, 2), verdict=verdict, data_completeness=round(completeness, 1),
+                price=snap.price, market_cap=snap.market_cap, pe=snap.pe, peg=peg, pb=snap.pb,
+                roe=snap.roe, roce=snap.roce, debt_to_equity=snap.debt_to_equity,
+                revenue_growth=revenue_growth, profit_growth=profit_growth, eps_growth=eps_growth,
+                sma50=snap.sma50, sma200=snap.sma200, rsi14=snap.rsi14, momentum_6m=snap.momentum_6m,
+                target_upside=snap.target_upside, analyst_beat_rate=beat_rate,
+                fundamental_score=fundamental_score, valuation_score=valuation_score,
+                technical_score=technical_score, analyst_score=analyst_score,
+            ))
 
         candidates.sort(key=lambda item: (item.score, item.data_completeness), reverse=True)
         candidates = candidates[:filters.limit]
-        for rank, item in enumerate(candidates, 1): item.rank = rank
+        for rank, item in enumerate(candidates, 1):
+            item.rank = rank
         return len(stocks), candidates
