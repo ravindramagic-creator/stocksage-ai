@@ -9,6 +9,7 @@ from app.api.financial_results import router as financial_results_router
 from app.api.health import router as health_router
 from app.api.indices import router as indices_router
 from app.api.market_data import router as market_data_router
+from app.api.screener import router as screener_router
 from app.api.stock_search import router as stock_search_router
 from app.api.stocks import router as stocks_router
 from app.api.subscriptions import router as subscriptions_router
@@ -69,3 +70,4 @@ app.include_router(updates_router)
 app.include_router(update_stats_router)
 app.include_router(financial_results_router)
 app.include_router(auto_sales_router)
+app.include_router(screener_router)
