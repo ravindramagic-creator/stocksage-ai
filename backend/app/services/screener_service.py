@@ -30,10 +30,6 @@ class StockScreenerService:
             return None
 
     @staticmethod
-    def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
-        return max(low, min(high, value))
-
-    @staticmethod
     def _score_higher(value: float | None, poor: float, good: float) -> float | None:
         if value is None:
             return None
@@ -74,20 +70,20 @@ class StockScreenerService:
 
     @staticmethod
     def _roce_from_yfinance(info: dict) -> float | None:
-        """Use provider ROCE when available; otherwise calculate it from EBIT/Capital Employed."""
         for key in ("returnOnCapitalEmployed", "returnOnCapital"):
             value = StockScreenerService._float(info.get(key))
             if value is not None:
                 return value * 100.0 if abs(value) <= 1.5 else value
-        ebit = StockScreenerService._float(info.get("ebitda"))
+
+        ebitda = StockScreenerService._float(info.get("ebitda"))
         depreciation = StockScreenerService._float(info.get("depreciation"))
         assets = StockScreenerService._float(info.get("totalAssets"))
-        liabilities = StockScreenerService._float(info.get("totalCurrentLiabilities"))
-        if ebit is not None and assets is not None and liabilities is not None:
-            ebit_estimate = ebit - depreciation if depreciation is not None else ebit
-            capital_employed = assets - liabilities
+        current_liabilities = StockScreenerService._float(info.get("totalCurrentLiabilities"))
+        if ebitda is not None and assets is not None and current_liabilities is not None:
+            ebit = ebitda - depreciation if depreciation is not None else ebitda
+            capital_employed = assets - current_liabilities
             if capital_employed > 0:
-                return ebit_estimate / capital_employed * 100.0
+                return ebit / capital_employed * 100.0
         return None
 
     @staticmethod
@@ -105,9 +101,7 @@ class StockScreenerService:
         return grouped
 
     def screen(self, filters: ScreenerFilters) -> tuple[int, list[ScreenerResult]]:
-        stocks = self.db.execute(
-            select(Stock).order_by(Stock.symbol).limit(filters.universe_limit)
-        ).scalars().all()
+        stocks = self.db.execute(select(Stock).order_by(Stock.symbol).limit(filters.universe_limit)).scalars().all()
         if not stocks:
             return 0, []
 
@@ -136,8 +130,6 @@ class StockScreenerService:
             except Exception:
                 pass
 
-            # Fundamental/valuation data. These fields are optional because Yahoo may
-            # temporarily omit them for a symbol; missing data is reported, not invented.
             try:
                 import yfinance as yf
                 ticker = yf.Ticker(self.market.provider._ticker_symbol(symbol))
@@ -155,6 +147,8 @@ class StockScreenerService:
             except Exception:
                 pass
 
+            if roe is not None and roe < filters.min_roe:
+                continue
             if pe is not None and pe > filters.max_pe:
                 continue
             if debt_to_equity is not None and debt_to_equity > filters.max_debt_to_equity:
@@ -179,10 +173,7 @@ class StockScreenerService:
             except Exception:
                 pass
 
-            estimate_rows = [
-                r for r in rows
-                if any(self._float(x) is not None for x in (r.revenue_estimate, r.pat_estimate, r.eps_estimate))
-            ][:4]
+            estimate_rows = [r for r in rows if any(self._float(x) is not None for x in (r.revenue_estimate, r.pat_estimate, r.eps_estimate))][:4]
             beat_rate = None
             if estimate_rows:
                 outcomes = []
@@ -194,9 +185,7 @@ class StockScreenerService:
                 if outcomes:
                     beat_rate = sum(outcomes) / len(outcomes) * 100.0
 
-            peg = None
-            if pe is not None and eps_growth is not None and eps_growth > 0:
-                peg = pe / eps_growth
+            peg = pe / eps_growth if pe is not None and eps_growth is not None and eps_growth > 0 else None
 
             fundamental_score = self._average([
                 self._score_higher(revenue_growth, 0, 25),
@@ -206,7 +195,6 @@ class StockScreenerService:
                 self._score_higher(roce, 8, 25),
                 self._score_lower(debt_to_equity, 0.25, 2.0),
             ])
-
             valuation_score = self._average([
                 self._score_lower(pe, 15, 45),
                 self._score_lower(peg, 1.0, 2.5),
@@ -221,19 +209,12 @@ class StockScreenerService:
             if sma50 is not None and sma200 is not None:
                 technical_parts.append(100.0 if sma50 > sma200 else 25.0)
             if rsi14 is not None:
-                technical_parts.append(
-                    100.0 if 50 <= rsi14 <= 65 else
-                    75.0 if 45 <= rsi14 < 50 or 65 < rsi14 <= 70 else
-                    50.0 if 35 <= rsi14 < 45 or 70 < rsi14 <= 75 else 20.0
-                )
+                technical_parts.append(100.0 if 50 <= rsi14 <= 65 else 75.0 if 45 <= rsi14 < 50 or 65 < rsi14 <= 70 else 50.0 if 35 <= rsi14 < 45 or 70 < rsi14 <= 75 else 20.0)
             if momentum6m is not None:
                 technical_parts.append(self._score_higher(momentum6m, -20, 25) or 0.0)
             technical_score = self._average(technical_parts)
 
-            analyst_score = self._average([
-                beat_rate,
-                self._score_higher(target_upside, 0, 30),
-            ])
+            analyst_score = self._average([beat_rate, self._score_higher(target_upside, 0, 30)])
 
             components = [fundamental_score, valuation_score, technical_score, analyst_score]
             weights = [0.50, 0.20, 0.20, 0.10]
@@ -243,13 +224,8 @@ class StockScreenerService:
             total_weight = sum(weight for _, weight in available)
             score = sum(component * weight for component, weight in available) / total_weight
 
-            metric_values = [
-                revenue_growth, profit_growth, eps_growth, roe, roce, debt_to_equity,
-                pe, peg, pb, price, sma50, sma200, rsi14, momentum6m,
-                target_upside, beat_rate,
-            ]
+            metric_values = [revenue_growth, profit_growth, eps_growth, roe, roce, debt_to_equity, pe, peg, pb, price, sma50, sma200, rsi14, momentum6m, target_upside, beat_rate]
             completeness = sum(value is not None for value in metric_values) / len(metric_values) * 100.0
-
             if score < filters.min_score:
                 continue
 
@@ -259,10 +235,7 @@ class StockScreenerService:
                 company_name=stock.company_name,
                 sector=stock.sector,
                 score=round(score, 2),
-                verdict=("STRONG BUY CANDIDATE" if score >= 85 else
-                         "BUY CANDIDATE" if score >= 75 else
-                         "ACCUMULATE / WATCH" if score >= 65 else
-                         "WATCH" if score >= 50 else "AVOID"),
+                verdict=("STRONG BUY CANDIDATE" if score >= 85 else "BUY CANDIDATE" if score >= 75 else "ACCUMULATE / WATCH" if score >= 65 else "WATCH" if score >= 50 else "AVOID"),
                 data_completeness=round(completeness, 1),
                 price=price,
                 market_cap=market_cap,
