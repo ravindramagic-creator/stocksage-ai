@@ -9,18 +9,18 @@ from app.services.market_data.base import MarketDataProvider
 
 
 class NSEIXGiftNiftyProvider(MarketDataProvider):
-    """Read the near-month GIFT NIFTY future from NSE International Exchange.
-
-    GIFT NIFTY is not the NSE-listed NIFTY1 ETF and is not available as the
-    same Yahoo Finance symbol. NSE IX publishes the near-month GIFT NIFTY
-    future on its public homepage.
-    """
+    """Read the near-month GIFT NIFTY future from NSE International Exchange."""
 
     URLS = (
         "https://www.nseix.com/",
         "https://www1.nseix.com/",
     )
-    LABEL = "Intra Day Price - Near month GIFT NIFTY Future"
+
+    LABELS = (
+        "Intra Day Price - Near month GIFT NIFTY Future",
+        "Near month GIFT NIFTY Future",
+        "GIFT NIFTY Future",
+    )
 
     def __init__(self, timeout: int = 10):
         self.timeout = timeout
@@ -42,58 +42,83 @@ class NSEIXGiftNiftyProvider(MarketDataProvider):
         )
 
     @staticmethod
-    def _float(value):
+    def _float(value: str | None) -> float | None:
         try:
-            return float(value.replace(",", "")) if value else None
+            return (
+                float(value.replace(",", ""))
+                if value
+                else None
+            )
         except (TypeError, ValueError):
             return None
 
     def _parse(self, html: str) -> StockQuote | None:
-        text = BeautifulSoup(html, "html.parser").get_text(
+        text = BeautifulSoup(
+            html,
+            "html.parser",
+        ).get_text(
             " ",
             strip=True,
         )
 
-        pattern = re.compile(
-            re.escape(self.LABEL)
-            + r"\s*"
-            + r"([+-]?\d[\d,]*(?:\.\d+)?)"
-            + r"\s*"
-            + r"([+-]?\d[\d,]*(?:\.\d+)?)"
-            + r"\s*\("
-            + r"([+-]?\d+(?:\.\d+)?)"
-            + r"%\)",
-            re.IGNORECASE,
-        )
+        # NSE IX has changed whitespace/markup around this widget over time.
+        # Search a bounded region after the label instead of requiring an
+        # exact DOM layout.
+        for label in self.LABELS:
+            start = text.lower().find(label.lower())
+            if start < 0:
+                continue
 
-        match = pattern.search(text)
-        if not match:
-            return None
+            tail = text[start + len(label): start + len(label) + 500]
 
-        price = self._float(match.group(1))
-        change = self._float(match.group(2))
-        change_percent = self._float(match.group(3))
+            match = re.search(
+                r"([+-]?\d[\d,]*(?:\.\d+)?)\s+"
+                r"([+-]?\d[\d,]*(?:\.\d+)?)\s*"
+                r"\(([+-]?\d+(?:\.\d+)?)%\)",
+                tail,
+            )
 
-        if price is None:
-            return None
+            if not match:
+                # Fallback for small markup changes between the price and
+                # change fields.
+                match = re.search(
+                    r"([+-]?\d[\d,]*(?:\.\d+)?).*?"
+                    r"([+-]?\d[\d,]*(?:\.\d+)?)\s*"
+                    r"\(([+-]?\d+(?:\.\d+)?)%\)",
+                    tail,
+                )
 
-        previous_close = None
-        if change is not None:
-            previous_close = price - change
+            if not match:
+                continue
 
-        return StockQuote(
-            symbol="GIFT NIFTY",
-            price=price,
-            previous_close=previous_close,
-            change=change,
-            change_percent=change_percent,
-            currency=None,
-            market_state=None,
-            updated_at=datetime.now(timezone.utc),
-        )
+            price = self._float(match.group(1))
+            change = self._float(match.group(2))
+            change_percent = self._float(match.group(3))
+
+            if price is None:
+                continue
+
+            previous_close = (
+                price - change
+                if change is not None
+                else None
+            )
+
+            return StockQuote(
+                symbol="GIFT NIFTY",
+                price=price,
+                previous_close=previous_close,
+                change=change,
+                change_percent=change_percent,
+                currency="INR",
+                market_state=None,
+                updated_at=datetime.now(timezone.utc),
+            )
+
+        return None
 
     def get_quote(self, symbol: str) -> StockQuote | None:
-        last_error = None
+        last_error: Exception | None = None
 
         for url in self.URLS:
             try:
@@ -112,7 +137,9 @@ class NSEIXGiftNiftyProvider(MarketDataProvider):
         if last_error:
             raise last_error
 
-        raise ValueError("Unable to parse GIFT NIFTY from NSE IX")
+        raise ValueError(
+            "Unable to parse GIFT NIFTY from NSE IX"
+        )
 
     def get_history(
         self,
