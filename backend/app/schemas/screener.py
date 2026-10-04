@@ -55,4 +55,6 @@ class ScreenerFilters(BaseModel):
     min_profit_growth: float = Field(default=10, ge=-100, le=500)
     min_market_cap: float = Field(default=5000, ge=0)
     limit: int = Field(default=10, ge=1, le=100)
-    universe_limit: int = Field(default=100, ge=20, le=1000)
+    # NSE has well over 1,000 listed equities. Keep this comfortably above
+    # the normal universe so the default screener evaluates the full master.
+    universe_limit: int = Field(default=5000, ge=20, le=10000)
