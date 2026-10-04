@@ -6,6 +6,7 @@ from app.models.subscription import Subscription
 from app.models.update_event import UpdateEvent
 from app.models.auto_sales import AutoSales  # noqa: F401
 from app.models.screener_snapshot import ScreenerSnapshot  # noqa: F401
+from app.models.market_snapshot import MarketSnapshot  # noqa: F401
 
 INITIAL_STOCKS = [
     {"symbol": "HAL", "company_name": "Hindustan Aeronautics Limited", "exchange": "NSE", "sector": "Defence"},
