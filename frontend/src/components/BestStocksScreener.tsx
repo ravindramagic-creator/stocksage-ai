@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { getScreenerResults, type ScreenerResponse, type ScreenerResult } from "../api/screener";
 
@@ -93,7 +93,7 @@ export function BestStocksScreener() {
         <div>
           <h2 className="text-xl font-semibold text-white">AI Best Stocks</h2>
           <p className="mt-1 text-sm text-slate-500">
-            Fundamental 50% · Valuation 20% · Technical 20% · Analyst 10%
+            Full NSE universe · Fundamental 50% · Valuation 20% · Technical 20% · Analyst 10%
           </p>
         </div>
         <div className="rounded-full bg-slate-950 px-3 py-1 text-xs text-slate-400">
@@ -111,7 +111,7 @@ export function BestStocksScreener() {
       </div>
 
       <button type="button" onClick={() => void runScreen()} disabled={loading} className="mt-4 rounded-lg bg-cyan-500 px-5 py-2 text-sm font-semibold text-slate-950 disabled:opacity-50">
-        {loading ? "Analyzing…" : "Find Best Stocks"}
+        {loading ? "Analyzing NSE universe…" : "Find Best Stocks"}
       </button>
 
       {error && <div className="mt-4 rounded-lg border border-red-900 bg-red-950/30 p-3 text-sm text-red-300">{error}</div>}
@@ -119,8 +119,8 @@ export function BestStocksScreener() {
       {data && (
         <>
           <div className="mt-5 mb-3 flex flex-wrap gap-4 text-xs text-slate-500">
-            <span>Universe: {data.total_universe}</span>
-            <span>Matches: {data.screened}</span>
+            <span>Universe evaluated: {data.total_universe}</span>
+            <span>Top matches: {data.screened}</span>
             <span>Click a row for detailed scores</span>
           </div>
 
@@ -133,16 +133,16 @@ export function BestStocksScreener() {
               </thead>
               <tbody>
                 {data.results.map(stock => (
-                  <>
-                    <tr key={stock.symbol} onClick={() => setExpanded(expanded === stock.symbol ? null : stock.symbol)} className="cursor-pointer border-b border-slate-800/70 hover:bg-slate-800/50">
+                  <Fragment key={stock.symbol}>
+                    <tr onClick={() => setExpanded(expanded === stock.symbol ? null : stock.symbol)} className="cursor-pointer border-b border-slate-800/70 hover:bg-slate-800/50">
                       <td className="px-3 py-3 text-slate-500">{stock.rank}</td>
                       <td className="px-3 py-3"><Link to={`/stock/${stock.symbol}`} onClick={e => e.stopPropagation()} className="font-semibold text-cyan-400">{stock.symbol}</Link><div className="text-[10px] text-slate-500">{stock.company_name}</div></td>
                       <td className={`px-3 py-3 font-bold ${scoreClass(stock.score)}`}>{fmt(stock.score, 0)}</td>
                       <td className="px-3 py-3">{fmt(stock.pe)}</td><td className="px-3 py-3">{fmt(stock.roe)}%</td><td className="px-3 py-3">{fmt(stock.roce)}%</td><td className="px-3 py-3">{fmt(stock.rsi14)}</td><td className="px-3 py-3">{fmt(stock.momentum_6m)}%</td>
                       <td className="px-3 py-3 text-xs font-semibold">{stock.verdict}</td>
                     </tr>
-                    {expanded === stock.symbol && <DetailRow key={`${stock.symbol}-details`} stock={stock} />}
-                  </>
+                    {expanded === stock.symbol && <DetailRow stock={stock} />}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
