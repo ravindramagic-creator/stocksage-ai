@@ -3,12 +3,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 import math
 
-import yfinance as yf
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.market_snapshot import MarketSnapshot
 from app.models.stock import Stock
+from app.services.market_data.yahoo_fundamentals_provider import YahooFundamentalsProvider
 from app.services.market_service import get_market_service
 
 
@@ -19,6 +19,7 @@ class MarketSnapshotService:
         self.db = db
         self.stale_seconds = stale_minutes * 60
         self.market = get_market_service()
+        self.yahoo_fundamentals = YahooFundamentalsProvider()
 
     @staticmethod
     def _number(value) -> float | None:
@@ -76,12 +77,9 @@ class MarketSnapshotService:
         row.status = "ok"
         row.error = None
 
-        # Fundamentals/analyst data are refreshed in the same background job,
-        # never in the HTTP screener request. A Yahoo failure leaves the quote
-        # intact and marks the snapshot partial instead of destroying old data.
         try:
-            ticker = yf.Ticker(f"{symbol}.NS")
-            info = ticker.info or {}
+            data = self.yahoo_fundamentals.get_snapshot_data(symbol)
+            info = data.get("info", {})
             row.market_cap = self._number(info.get("marketCap"))
             row.pe = self._number(info.get("trailingPE"))
             row.pb = self._number(info.get("priceToBook"))
@@ -90,11 +88,10 @@ class MarketSnapshotService:
             row.debt_to_equity = self._debt(info.get("debtToEquity"))
             row.revenue_growth = self._percent(info.get("revenueGrowth"))
             row.profit_growth = self._percent(info.get("earningsGrowth"))
-
             target = self._number(info.get("targetMeanPrice"))
             row.target_upside = ((target / row.price) - 1) * 100 if target and row.price else None
 
-            history = ticker.history(period="1y", interval="1d", auto_adjust=False)
+            history = self.yahoo_fundamentals.get_history(symbol)
             closes = [self._number(v) for v in history.get("Close", []).tolist()]
             closes = [value for value in closes if value is not None]
             if len(closes) >= 50:
@@ -106,7 +103,11 @@ class MarketSnapshotService:
                 lookback = min(126, len(closes) - 1)
                 row.momentum_6m = (closes[-1] / closes[-1 - lookback] - 1) * 100
         except Exception as exc:
+            # Preserve any good values already in the snapshot. A provider
+            # outage must not erase usable historical scoring data.
             row.error = f"partial snapshot: {str(exc)[:900]}"
+            if "cooling down" in str(exc).lower():
+                row.status = "partial"
 
         row.updated_at = now
 
