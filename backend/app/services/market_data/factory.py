@@ -9,7 +9,7 @@ from app.services.market_data.yfinance_provider import YFinanceProvider
 
 
 class ResilientMarketDataProvider(MarketDataProvider):
-    """Use Yahoo normally, but fail over to NSE when Yahoo is throttled."""
+    """Use Yahoo normally, but fail over safely when Yahoo/NSE are unavailable."""
 
     YAHOO_COOLDOWN_SECONDS = 300
 
@@ -22,30 +22,30 @@ class ResilientMarketDataProvider(MarketDataProvider):
         return time.monotonic() >= self._yahoo_disabled_until
 
     def _disable_yahoo(self) -> None:
-        self._yahoo_disabled_until = (
-            time.monotonic() + self.YAHOO_COOLDOWN_SECONDS
-        )
+        self._yahoo_disabled_until = time.monotonic() + self.YAHOO_COOLDOWN_SECONDS
 
     def get_quote(self, symbol: str):
-        # Once Yahoo has returned a 429, don't hammer it again for every stock
-        # rendered by the dashboard. All quote requests use NSE during the
-        # cooldown window.
         if not self._yahoo_available():
-            return self.nse.get_quote(symbol)
+            try:
+                return self.nse.get_quote(symbol)
+            except Exception:
+                # During an upstream outage, don't turn a cached/background
+                # update failure into a 500/502 for the whole worker.
+                return None
 
         try:
             return self.yahoo.get_quote(symbol)
         except yf_exceptions.YFRateLimitError:
             self._disable_yahoo()
+        except Exception:
+            pass
+
+        try:
             return self.nse.get_quote(symbol)
         except Exception:
-            # Other transient Yahoo failures also get a single NSE fallback,
-            # but do not disable Yahoo globally because they may be symbol-specific.
-            return self.nse.get_quote(symbol)
+            return None
 
     def get_history(self, symbol: str, period: str, interval: str):
-        # Historical charts/technical indicators remain on Yahoo. The NSE
-        # fallback currently implements live quotes only.
         return self.yahoo.get_history(symbol, period, interval)
 
 
