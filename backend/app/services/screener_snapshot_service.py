@@ -25,9 +25,6 @@ class ScreenerSnapshotService:
             + uuid4().hex[:8]
         )
 
-        # Process the underlying Stock rows in fixed-size batches. The cursor
-        # must advance by rows scanned, not by candidates returned, otherwise
-        # a batch with few matches causes the same stocks to be processed again.
         batch_size = 100
         all_results_by_symbol: dict[str, ScreenerResult] = {}
         offset = 0
@@ -123,8 +120,6 @@ class ScreenerSnapshotService:
         self,
         filters: ScreenerFilters,
     ) -> tuple[int, list[ScreenerResult], datetime | None]:
-        # Report the actual active NSE universe, not merely the number of
-        # symbols that happened to have usable snapshot data.
         total_universe = self.db.scalar(
             select(func.count())
             .select_from(Stock)
@@ -147,11 +142,29 @@ class ScreenerSnapshotService:
                 continue
             seen_symbols.add(symbol)
 
+            # Apply the same quality gate at read time as during snapshot
+            # generation. This immediately removes stale/legacy rows with
+            # missing core metrics before the next background rebuild.
+            if row.roe is None or row.roce is None:
+                continue
+            if row.pe is None or row.pe <= 0:
+                continue
+            if (
+                row.price is None
+                or row.sma50 is None
+                or row.sma200 is None
+                or row.rsi14 is None
+                or row.momentum_6m is None
+            ):
+                continue
+            if row.data_completeness < 75:
+                continue
+
             if row.score < filters.min_score:
                 continue
-            if row.roe is not None and row.roe < filters.min_roe:
+            if row.roe < filters.min_roe:
                 continue
-            if row.pe is not None and row.pe > filters.max_pe:
+            if row.pe > filters.max_pe:
                 continue
             if (
                 row.debt_to_equity is not None
@@ -159,13 +172,13 @@ class ScreenerSnapshotService:
             ):
                 continue
             if (
-                row.revenue_growth is not None
-                and row.revenue_growth < filters.min_revenue_growth
+                row.revenue_growth is None
+                or row.revenue_growth < filters.min_revenue_growth
             ):
                 continue
             if (
-                row.profit_growth is not None
-                and row.profit_growth < filters.min_profit_growth
+                row.profit_growth is None
+                or row.profit_growth < filters.min_profit_growth
             ):
                 continue
             if (
@@ -206,6 +219,7 @@ class ScreenerSnapshotService:
                     analyst_score=row.analyst_score,
                 )
             )
+
             if len(results) >= filters.limit:
                 break
 
