@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.screener_snapshot import ScreenerSnapshot
@@ -126,8 +126,10 @@ class ScreenerSnapshotService:
         # Report the actual active NSE universe, not merely the number of
         # symbols that happened to have usable snapshot data.
         total_universe = self.db.scalar(
-            select(Stock.id).where(Stock.exchange == "NSE").count()
-        ) if False else self.db.query(Stock).filter(Stock.exchange == "NSE").count()
+            select(func.count())
+            .select_from(Stock)
+            .where(Stock.exchange == "NSE")
+        ) or 0
 
         query = select(ScreenerSnapshot).order_by(
             ScreenerSnapshot.score.desc(),
@@ -208,4 +210,4 @@ class ScreenerSnapshotService:
                 break
 
         snapshot_at = rows[0].snapshot_at if rows else None
-        return total_universe, results, snapshot_at
+        return int(total_universe), results, snapshot_at
