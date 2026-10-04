@@ -15,7 +15,10 @@ const DISPLAY_ORDER = [
 const PULSE_ORDER = ["INDIA VIX", "USD/INR", "BRENT CRUDE"];
 
 const DISPLAY_LABELS: Record<string, string> = {
-  GOLD: "GOLD (₹/10g)",
+  GIFT_NIFTY: "GIFT NIFTY (NSE IX)",
+  GOLD: "GOLD 24K / 999 (₹/10g)",
+  "CRUDE OIL": "WTI CRUDE (USD/bbl)",
+  "BRENT CRUDE": "BRENT CRUDE (USD/bbl)",
 };
 
 function MarketCard({
