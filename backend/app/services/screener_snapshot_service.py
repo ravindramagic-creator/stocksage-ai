@@ -7,6 +7,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.screener_snapshot import ScreenerSnapshot
+from app.models.stock import Stock
 from app.schemas.screener import ScreenerFilters, ScreenerResult
 from app.services.screener_service import StockScreenerService
 
@@ -122,9 +123,11 @@ class ScreenerSnapshotService:
         self,
         filters: ScreenerFilters,
     ) -> tuple[int, list[ScreenerResult], datetime | None]:
-        stocks_count = self.db.execute(
-            select(ScreenerSnapshot.symbol).distinct()
-        ).all()
+        # Report the actual active NSE universe, not merely the number of
+        # symbols that happened to have usable snapshot data.
+        total_universe = self.db.scalar(
+            select(Stock.id).where(Stock.exchange == "NSE").count()
+        ) if False else self.db.query(Stock).filter(Stock.exchange == "NSE").count()
 
         query = select(ScreenerSnapshot).order_by(
             ScreenerSnapshot.score.desc(),
@@ -148,13 +151,25 @@ class ScreenerSnapshotService:
                 continue
             if row.pe is not None and row.pe > filters.max_pe:
                 continue
-            if row.debt_to_equity is not None and row.debt_to_equity > filters.max_debt_to_equity:
+            if (
+                row.debt_to_equity is not None
+                and row.debt_to_equity > filters.max_debt_to_equity
+            ):
                 continue
-            if row.revenue_growth is not None and row.revenue_growth < filters.min_revenue_growth:
+            if (
+                row.revenue_growth is not None
+                and row.revenue_growth < filters.min_revenue_growth
+            ):
                 continue
-            if row.profit_growth is not None and row.profit_growth < filters.min_profit_growth:
+            if (
+                row.profit_growth is not None
+                and row.profit_growth < filters.min_profit_growth
+            ):
                 continue
-            if row.market_cap is not None and row.market_cap < filters.min_market_cap * 10_000_000:
+            if (
+                row.market_cap is not None
+                and row.market_cap < filters.min_market_cap * 10_000_000
+            ):
                 continue
 
             results.append(
@@ -193,4 +208,4 @@ class ScreenerSnapshotService:
                 break
 
         snapshot_at = rows[0].snapshot_at if rows else None
-        return len(stocks_count), results, snapshot_at
+        return total_universe, results, snapshot_at
