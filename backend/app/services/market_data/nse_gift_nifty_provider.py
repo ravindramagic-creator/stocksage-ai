@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -10,6 +11,9 @@ class NSEGiftniftyProvider(MarketDataProvider):
     """Read GIFT Nifty from NSE India's market-status feed."""
 
     URL = "https://www.nseindia.com/api/marketStatus"
+    CACHE_TTL_SECONDS = 60
+    _cached_quote: StockQuote | None = None
+    _cached_at: float = 0.0
 
     def __init__(self, timeout: int = 10):
         self.timeout = timeout
@@ -19,7 +23,7 @@ class NSEGiftniftyProvider(MarketDataProvider):
                 "User-Agent": (
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/154.0 Safari/537.36"
+                    "Chrome/154.0 Safari/537.0"
                 ),
                 "Accept": "application/json,text/plain,*/*",
                 "Accept-Language": "en-US,en;q=0.9",
@@ -36,7 +40,14 @@ class NSEGiftniftyProvider(MarketDataProvider):
             return None
 
     def get_quote(self, symbol: str) -> StockQuote:
-        # Bootstrap NSE cookies first; the endpoint may return HTML otherwise.
+        now = time.monotonic()
+        cached = self.__class__._cached_quote
+        if (
+            cached is not None
+            and now - self.__class__._cached_at < self.CACHE_TTL_SECONDS
+        ):
+            return cached
+
         self.session.get(
             "https://www.nseindia.com/",
             timeout=self.timeout,
@@ -51,15 +62,9 @@ class NSEGiftniftyProvider(MarketDataProvider):
 
         gift = payload.get("giftnifty") or {}
 
-        price = self._float(
-            gift.get("LASTPRICE")
-        )
-        change = self._float(
-            gift.get("DAYCHANGE")
-        )
-        change_percent = self._float(
-            gift.get("PERCHANGE")
-        )
+        price = self._float(gift.get("LASTPRICE"))
+        change = self._float(gift.get("DAYCHANGE"))
+        change_percent = self._float(gift.get("PERCHANGE"))
 
         if price is None:
             raise ValueError(
@@ -72,7 +77,7 @@ class NSEGiftniftyProvider(MarketDataProvider):
             else None
         )
 
-        return StockQuote(
+        quote = StockQuote(
             symbol="GIFT NIFTY",
             price=price,
             previous_close=previous_close,
@@ -82,6 +87,10 @@ class NSEGiftniftyProvider(MarketDataProvider):
             market_state="OPEN",
             updated_at=datetime.now(timezone.utc),
         )
+
+        self.__class__._cached_quote = quote
+        self.__class__._cached_at = now
+        return quote
 
     def get_history(
         self,
