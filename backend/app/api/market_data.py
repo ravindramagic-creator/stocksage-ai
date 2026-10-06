@@ -1,12 +1,9 @@
-from fastapi import APIRouter, HTTPException
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
-from app.schemas.market_data import (
-    HistoricalPrices,
-    StockQuote,
-)
-from app.services.market_service import (
-    get_market_service,
-)
+from fastapi import APIRouter, HTTPException, Query
+
+from app.schemas.market_data import HistoricalPrices, StockQuote
+from app.services.market_service import get_market_service
 
 
 router = APIRouter(
@@ -20,7 +17,6 @@ router = APIRouter(
     response_model=StockQuote,
 )
 def get_quote(symbol: str):
-
     symbol = symbol.strip().upper()
 
     if not symbol:
@@ -33,7 +29,6 @@ def get_quote(symbol: str):
 
     try:
         quote = service.get_quote(symbol)
-
     except Exception as exc:
         raise HTTPException(
             status_code=502,
@@ -43,13 +38,74 @@ def get_quote(symbol: str):
             ),
         ) from exc
 
-    if quote.price is None:
+    if quote is None or quote.price is None:
         raise HTTPException(
             status_code=404,
             detail=f"No market data found for '{symbol}'",
         )
 
     return quote
+
+
+@router.get(
+    "/quotes",
+    response_model=list[StockQuote],
+)
+def get_quotes(
+    symbols: str = Query(
+        ...,
+        description="Comma-separated NSE symbols, maximum 50",
+    ),
+):
+    requested = [
+        symbol.strip().upper()
+        for symbol in symbols.split(",")
+        if symbol.strip()
+    ]
+
+    # Preserve request order while removing duplicates.
+    requested = list(dict.fromkeys(requested))
+
+    if not requested:
+        return []
+
+    if len(requested) > 50:
+        raise HTTPException(
+            status_code=400,
+            detail="A maximum of 50 symbols can be requested",
+        )
+
+    service = get_market_service()
+    results_by_symbol: dict[str, StockQuote] = {}
+
+    # Subscriptions used to trigger one browser request per stock. Fetch all
+    # requested quotes concurrently on the backend instead.
+    with ThreadPoolExecutor(
+        max_workers=min(8, len(requested)),
+        thread_name_prefix="watchlist-quote",
+    ) as executor:
+        futures = {
+            executor.submit(service.get_quote, symbol): symbol
+            for symbol in requested
+        }
+
+        for future in as_completed(futures):
+            symbol = futures[future]
+
+            try:
+                quote = future.result()
+                if quote is not None and quote.price is not None:
+                    results_by_symbol[symbol] = quote
+            except Exception:
+                # One unavailable stock must not fail the whole watchlist.
+                continue
+
+    return [
+        results_by_symbol[symbol]
+        for symbol in requested
+        if symbol in results_by_symbol
+    ]
+
 
 @router.get(
     "/history/{symbol}",
