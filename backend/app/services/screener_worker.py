@@ -8,17 +8,19 @@ from app.services.screener_snapshot_service import ScreenerSnapshotService
 
 logger = logging.getLogger("stocksage.screener_worker")
 
-# The screener itself is database-only. MarketSnapshotWorker is responsible
-# for upstream provider calls, so rebuilding the screener snapshot frequently
-# is inexpensive and keeps rankings aligned with newly repaired fundamentals.
 SCREENER_REFRESH_SECONDS = 15 * 60
 
 
-async def run_screener_refresh() -> None:
+def _run_screener_refresh_sync() -> None:
     db = SessionLocal()
     try:
-        count = ScreenerSnapshotService(db).refresh(universe_limit=5000)
-        logger.info("Screener snapshot refreshed: %d stocks", count)
+        count = ScreenerSnapshotService(db).refresh(
+            universe_limit=5000
+        )
+        logger.info(
+            "Screener snapshot refreshed: %d stocks",
+            count,
+        )
     except Exception:
         logger.exception(
             "Screener snapshot refresh failed; keeping last snapshot"
@@ -27,13 +29,25 @@ async def run_screener_refresh() -> None:
         db.close()
 
 
-async def screener_worker() -> None:
-    logger.info("Screener snapshot worker started")
+async def run_screener_refresh() -> None:
+    # The snapshot calculation is synchronous database work. Never execute it
+    # directly in the asyncio event loop.
+    await asyncio.to_thread(
+        _run_screener_refresh_sync
+    )
 
-    # Build once at startup, then refresh frequently from the persisted
-    # MarketSnapshot data. No Yahoo/NSE calls happen in this worker.
-    asyncio.create_task(run_screener_refresh())
+
+async def screener_worker() -> None:
+    logger.info(
+        "Screener snapshot worker started"
+    )
+
+    # Do not compete with the initial page load for CPU/database resources.
+    await asyncio.sleep(20)
+    await run_screener_refresh()
 
     while True:
-        await asyncio.sleep(SCREENER_REFRESH_SECONDS)
+        await asyncio.sleep(
+            SCREENER_REFRESH_SECONDS
+        )
         await run_screener_refresh()
