@@ -10,6 +10,7 @@ from app.schemas.market_regime import (
     MarketRegimeFactor,
     MarketRegimeResponse,
 )
+from app.services.market_cache import market_cache
 from app.services.market_service import get_market_service
 
 
@@ -153,10 +154,20 @@ class MarketRegimeService:
         )
 
     def get(self) -> MarketRegimeResponse:
+        cached = market_cache.get(
+            self.CACHE_KEY
+        )
+        if cached is not None:
+            return MarketRegimeResponse.model_validate(
+                cached.model_dump()
+                if hasattr(cached, "model_dump")
+                else cached
+            )
+
         nifty = self._nifty_metrics()
 
         if nifty is None:
-            return MarketRegimeResponse(
+            response = MarketRegimeResponse(
                 regime="DATA UNAVAILABLE",
                 score=0,
                 bullish_signals=0,
@@ -165,6 +176,12 @@ class MarketRegimeService:
                 factors=[],
                 note="Nifty history is temporarily unavailable.",
             )
+            market_cache.set(
+                self.CACHE_KEY,
+                response,
+                self.CACHE_TTL,
+            )
+            return response
 
         (
             price,
@@ -219,15 +236,10 @@ class MarketRegimeService:
 
         add(
             "Nifty vs 50-DMA",
-            (
-                None
-                if sma50 is None
-                else price > sma50
-            ),
+            None if sma50 is None else price > sma50,
             (
                 "Price is above 50-DMA."
-                if sma50 is not None
-                and price > sma50
+                if sma50 is not None and price > sma50
                 else "Price is below 50-DMA."
                 if sma50 is not None
                 else "50-DMA unavailable."
@@ -236,15 +248,10 @@ class MarketRegimeService:
 
         add(
             "Nifty vs 200-DMA",
-            (
-                None
-                if sma200 is None
-                else price > sma200
-            ),
+            None if sma200 is None else price > sma200,
             (
                 "Price is above 200-DMA."
-                if sma200 is not None
-                and price > sma200
+                if sma200 is not None and price > sma200
                 else "Price is below 200-DMA."
                 if sma200 is not None
                 else "200-DMA unavailable."
@@ -255,8 +262,7 @@ class MarketRegimeService:
             "50-DMA vs 200-DMA",
             (
                 None
-                if sma50 is None
-                or sma200 is None
+                if sma50 is None or sma200 is None
                 else sma50 > sma200
             ),
             (
@@ -273,11 +279,7 @@ class MarketRegimeService:
 
         add(
             "RSI-14",
-            (
-                None
-                if rsi is None
-                else rsi >= 50
-            ),
+            None if rsi is None else rsi >= 50,
             (
                 f"RSI is {rsi:.1f}, showing positive momentum."
                 if rsi is not None and rsi >= 50
@@ -289,15 +291,10 @@ class MarketRegimeService:
 
         add(
             "6M Momentum",
-            (
-                None
-                if momentum_6m is None
-                else momentum_6m > 0
-            ),
+            None if momentum_6m is None else momentum_6m > 0,
             (
                 f"6M momentum is +{momentum_6m:.1f}%."
-                if momentum_6m is not None
-                and momentum_6m > 0
+                if momentum_6m is not None and momentum_6m > 0
                 else f"6M momentum is {momentum_6m:.1f}%."
                 if momentum_6m is not None
                 else "6M momentum unavailable."
@@ -306,11 +303,7 @@ class MarketRegimeService:
 
         add(
             "Market Breadth",
-            (
-                None
-                if breadth is None
-                else breadth >= 50
-            ),
+            None if breadth is None else breadth >= 50,
             (
                 f"{breadth:.0f}% of tracked stocks are above 50-DMA."
                 if breadth is not None
@@ -320,11 +313,7 @@ class MarketRegimeService:
 
         add(
             "India VIX",
-            (
-                None
-                if vix is None
-                else vix <= 18
-            ),
+            None if vix is None else vix <= 18,
             (
                 f"India VIX is {vix:.2f}, supporting risk appetite."
                 if vix is not None and vix <= 18
@@ -351,28 +340,18 @@ class MarketRegimeService:
 
         score = round(
             (
-                (
-                    bullish
-                    / total_signals
-                )
-                * 100
+                bullish / total_signals * 100
             )
             if total_signals
             else 0
         )
 
-        if regime in {
-            "BULL MARKET",
-            "BULLISH",
-        }:
+        if regime in {"BULL MARKET", "BULLISH"}:
             note = (
                 "Trend and breadth favor buying quality stocks, "
                 "but valuation and stock-specific risks still matter."
             )
-        elif regime in {
-            "BEAR MARKET",
-            "BEARISH",
-        }:
+        elif regime in {"BEAR MARKET", "BEARISH"}:
             note = (
                 "Market conditions are weak. Prefer selective buying "
                 "and stronger technical confirmation."
@@ -383,7 +362,7 @@ class MarketRegimeService:
                 "for clearer trend confirmation."
             )
 
-        return MarketRegimeResponse(
+        response = MarketRegimeResponse(
             regime=regime,
             score=score,
             bullish_signals=bullish,
@@ -399,3 +378,11 @@ class MarketRegimeService:
             factors=factors,
             note=note,
         )
+
+        market_cache.set(
+            self.CACHE_KEY,
+            response,
+            self.CACHE_TTL,
+        )
+
+        return response
