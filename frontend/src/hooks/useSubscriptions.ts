@@ -10,27 +10,21 @@ import {
   unsubscribe,
 } from "../api/subscriptions";
 
-
 export function useSubscriptions() {
-
   return useQuery({
     queryKey: ["subscriptions"],
     queryFn: getSubscriptions,
+    staleTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
   });
 }
 
-
 export function useSubscribe() {
-
-  const queryClient =
-    useQueryClient();
+  const queryClient = useQueryClient();
 
   return useMutation({
-
     mutationFn: subscribe,
-
     onSuccess: () => {
-
       queryClient.invalidateQueries({
         queryKey: ["subscriptions"],
       });
@@ -38,18 +32,12 @@ export function useSubscribe() {
   });
 }
 
-
 export function useUnsubscribe() {
-
-  const queryClient =
-    useQueryClient();
+  const queryClient = useQueryClient();
 
   return useMutation({
-
     mutationFn: unsubscribe,
-
     onSuccess: () => {
-
       queryClient.invalidateQueries({
         queryKey: ["subscriptions"],
       });
