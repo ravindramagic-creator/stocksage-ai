@@ -2,6 +2,7 @@ import { useParams, Link } from "react-router-dom";
 import { useState } from "react";
 
 import { FinancialResultCard } from "../components/FinancialResultCard";
+import { FundamentalAnalysis } from "../components/FundamentalAnalysis";
 import { UpdateFeed } from "../components/UpdateFeed";
 import { PriceChart } from "../components/PriceChart";
 import { TechnicalIndicators } from "../components/TechnicalIndicators";
@@ -32,10 +33,14 @@ const chartRanges: ChartRange[] = [
 
 export function StockPage() {
   const { symbol } = useParams<{ symbol: string }>();
-  const [activeTab, setActiveTab] = useState<StockTab>("overview");
-  const [period, setPeriod] = useState("1mo");
-  const [interval, setInterval] = useState("1d");
-  const stockSymbol = symbol?.toUpperCase() ?? "";
+  const [activeTab, setActiveTab] =
+    useState<StockTab>("overview");
+  const [period, setPeriod] =
+    useState("1mo");
+  const [interval, setInterval] =
+    useState("1d");
+  const stockSymbol =
+    symbol?.toUpperCase() ?? "";
 
   if (!stockSymbol) {
     return (
@@ -48,22 +53,34 @@ export function StockPage() {
   return (
     <main className="min-h-screen bg-slate-950">
       <div className="mx-auto max-w-6xl px-6 py-8">
-        <Link to="/" className="text-sm text-slate-400 hover:text-white">
+        <Link
+          to="/"
+          className="text-sm text-slate-400 hover:text-white"
+        >
           ← Back to Dashboard
         </Link>
 
         <section className="mt-6">
-          <h1 className="text-3xl font-bold text-white">{stockSymbol}</h1>
-          <p className="mt-1 text-slate-400">Stock details and market updates</p>
+          <h1 className="text-3xl font-bold text-white">
+            {stockSymbol}
+          </h1>
+          <p className="mt-1 text-slate-400">
+            Stock details, fundamentals, technicals and market updates
+          </p>
         </section>
 
         <section className="mt-6">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-            <h2 className="mb-5 text-xl font-semibold text-white">Price History</h2>
+            <h2 className="mb-5 text-xl font-semibold text-white">
+              Price History
+            </h2>
 
             <div className="mb-6 flex w-full flex-wrap gap-2">
               {chartRanges.map((range) => {
-                const isActive = period === range.period && interval === range.interval;
+                const isActive =
+                  period === range.period &&
+                  interval === range.interval;
+
                 return (
                   <button
                     key={range.label}
@@ -72,11 +89,11 @@ export function StockPage() {
                       setPeriod(range.period);
                       setInterval(range.interval);
                     }}
-                    className={`rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${
-                      isActive
+                    className={
+                      `rounded-lg border px-4 py-2 text-sm font-medium transition-colors ${isActive
                         ? "border-blue-500 bg-blue-600 text-white"
-                        : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
-                    }`}
+                        : "border-slate-700 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"}`
+                    }
                   >
                     {range.label}
                   </button>
@@ -84,20 +101,56 @@ export function StockPage() {
               })}
             </div>
 
-            <PriceChart symbol={stockSymbol} period={period} interval={interval} />
+            <PriceChart
+              symbol={stockSymbol}
+              period={period}
+              interval={interval}
+            />
           </div>
         </section>
 
         <section className="mt-6">
-          <TechnicalIndicators symbol={stockSymbol} />
+          <TechnicalIndicators
+            symbol={stockSymbol}
+          />
+        </section>
+
+        <section className="mt-6">
+          <FundamentalAnalysis
+            symbol={stockSymbol}
+          />
         </section>
 
         <div className="mt-8 border-b border-slate-800">
           <div className="flex gap-6 overflow-x-auto">
-            <Tab label="Overview" active={activeTab === "overview"} onClick={() => setActiveTab("overview")} />
-            <Tab label="News" active={activeTab === "news"} onClick={() => setActiveTab("news")} />
-            <Tab label="Dividend" active={activeTab === "dividend"} onClick={() => setActiveTab("dividend")} />
-            <Tab label="Stock Split" active={activeTab === "split"} onClick={() => setActiveTab("split")} />
+            <Tab
+              label="Overview"
+              active={activeTab === "overview"}
+              onClick={() =>
+                setActiveTab("overview")
+              }
+            />
+            <Tab
+              label="News"
+              active={activeTab === "news"}
+              onClick={() =>
+                setActiveTab("news")
+              }
+            />
+            <Tab
+              label="Dividend"
+              active={activeTab === "dividend"}
+              onClick={() =>
+                setActiveTab("dividend")
+              }
+            />
+            <Tab
+              label="Stock Split"
+              active={activeTab === "split"}
+              onClick={() =>
+                setActiveTab("split")
+              }
+            />
           </div>
         </div>
 
@@ -105,19 +158,48 @@ export function StockPage() {
           {activeTab === "overview" && (
             <div className="space-y-8">
               <div>
-                <h2 className="mb-4 text-xl font-semibold text-white">Financial Results</h2>
-                <FinancialResultCard symbol={stockSymbol} />
+                <h2 className="mb-4 text-xl font-semibold text-white">
+                  Financial Results
+                </h2>
+                <FinancialResultCard
+                  symbol={stockSymbol}
+                />
               </div>
+
               <div>
-                <h2 className="mb-4 text-xl font-semibold text-white">Recent Updates</h2>
-                <UpdateFeed symbol={stockSymbol} />
+                <h2 className="mb-4 text-xl font-semibold text-white">
+                  Recent Updates
+                </h2>
+                <UpdateFeed
+                  symbol={stockSymbol}
+                />
               </div>
             </div>
           )}
 
-          {activeTab === "news" && <EventTab symbol={stockSymbol} eventType="NEWS" title="News" />}
-          {activeTab === "dividend" && <EventTab symbol={stockSymbol} eventType="DIVIDEND" title="Dividend History" />}
-          {activeTab === "split" && <EventTab symbol={stockSymbol} eventType="SPLIT" title="Stock Split History" />}
+          {activeTab === "news" && (
+            <EventTab
+              symbol={stockSymbol}
+              eventType="NEWS"
+              title="News"
+            />
+          )}
+
+          {activeTab === "dividend" && (
+            <EventTab
+              symbol={stockSymbol}
+              eventType="DIVIDEND"
+              title="Dividend History"
+            />
+          )}
+
+          {activeTab === "split" && (
+            <EventTab
+              symbol={stockSymbol}
+              eventType="SPLIT"
+              title="Stock Split History"
+            />
+          )}
         </section>
       </div>
     </main>
@@ -130,14 +212,20 @@ interface TabProps {
   onClick: () => void;
 }
 
-function Tab({ label, active, onClick }: TabProps) {
+function Tab({
+  label,
+  active,
+  onClick,
+}: TabProps) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`border-b-2 px-1 pb-3 text-sm font-medium transition ${
-        active ? "border-blue-500 text-white" : "border-transparent text-slate-500 hover:text-slate-300"
-      }`}
+      className={
+        `border-b-2 px-1 pb-3 text-sm font-medium transition ${active
+          ? "border-blue-500 text-white"
+          : "border-transparent text-slate-500 hover:text-slate-300"}`
+      }
     >
       {label}
     </button>
@@ -146,15 +234,27 @@ function Tab({ label, active, onClick }: TabProps) {
 
 interface EventTabProps {
   symbol: string;
-  eventType: "NEWS" | "DIVIDEND" | "SPLIT";
+  eventType:
+    | "NEWS"
+    | "DIVIDEND"
+    | "SPLIT";
   title: string;
 }
 
-function EventTab({ symbol, eventType, title }: EventTabProps) {
+function EventTab({
+  symbol,
+  eventType,
+  title,
+}: EventTabProps) {
   return (
     <div>
-      <h2 className="mb-4 text-xl font-semibold text-white">{title}</h2>
-      <UpdateFeed symbol={symbol} eventType={eventType} />
+      <h2 className="mb-4 text-xl font-semibold text-white">
+        {title}
+      </h2>
+      <UpdateFeed
+        symbol={symbol}
+        eventType={eventType}
+      />
     </div>
   );
 }
