@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.auto_sales import router as auto_sales_router
 from app.api.financial_results import router as financial_results_router
+from app.api.fundamental_analysis import router as fundamental_analysis_router
 from app.api.health import router as health_router
 from app.api.indices import router as indices_router
 from app.api.market_data import router as market_data_router
@@ -94,5 +95,6 @@ app.include_router(subscriptions_router)
 app.include_router(updates_router)
 app.include_router(update_stats_router)
 app.include_router(financial_results_router)
+app.include_router(fundamental_analysis_router)
 app.include_router(auto_sales_router)
 app.include_router(screener_router)
