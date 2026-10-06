@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { MarketSummary } from "../components/MarketSummary";
 import { MarketSearchResults } from "../components/MarketSearchResults";
@@ -11,279 +11,121 @@ import { useMarketSearch } from "../hooks/useMarketSearch";
 
 
 export function Dashboard() {
-
-  const [
-    searchQuery,
-    setSearchQuery,
-  ] = useState("");
-
+  const [searchQuery, setSearchQuery] = useState("");
+  const [secondaryContentReady, setSecondaryContentReady] = useState(false);
 
   const {
     data,
     isLoading,
     isError,
-  } = useMarketSearch(
-    searchQuery,
-  );
+  } = useMarketSearch(searchQuery);
 
+  useEffect(() => {
+    // Keep the first paint focused on the market and stock search. Subscription
+    // and update-feed queries are secondary and can start just after the page
+    // becomes interactive.
+    const schedule = window.requestIdleCallback
+      ? window.requestIdleCallback(() => {
+          setSecondaryContentReady(true);
+        }, { timeout: 700 })
+      : window.setTimeout(() => {
+          setSecondaryContentReady(true);
+        }, 400);
+
+    return () => {
+      if (typeof schedule === "number") {
+        window.clearTimeout(schedule);
+      } else {
+        window.cancelIdleCallback?.(schedule);
+      }
+    };
+  }, []);
 
   return (
-    <main
-      className="
-        min-h-screen
-        bg-slate-950
-      "
-    >
-
-      <div
-        className="
-          mx-auto
-          max-w-6xl
-          px-6
-          py-8
-        "
-      >
-
-        {/* Header */}
-
+    <main className="min-h-screen bg-slate-950">
+      <div className="mx-auto max-w-6xl px-6 py-8">
         <header className="mb-8">
-
-          <h1
-            className="
-              text-3xl
-              font-bold
-              text-white
-            "
-          >
+          <h1 className="text-3xl font-bold text-white">
             StockSage AI
           </h1>
-
-          <p
-            className="
-              mt-1
-              text-slate-400
-            "
-          >
-            Track the stocks
-            that matter to you.
+          <p className="mt-1 text-slate-400">
+            Track the stocks that matter to you.
           </p>
-
         </header>
 
-
-        {/* Indian Market */}
-
         <section className="mb-8">
-
           <div className="mb-4">
-
-            <h2
-              className="
-                text-xl
-                font-semibold
-                text-white
-              "
-            >
+            <h2 className="text-xl font-semibold text-white">
               Indian Market
             </h2>
-
           </div>
-
           <MarketSummary />
-
         </section>
-
-
-        {/* Find a Stock */}
 
         <section className="mb-8">
-
           <div className="mb-4">
-
-            <h2
-              className="
-                text-xl
-                font-semibold
-                text-white
-              "
-            >
+            <h2 className="text-xl font-semibold text-white">
               Find a Stock
             </h2>
-
-            <p
-              className="
-                text-sm
-                text-slate-500
-              "
-            >
-              Search NSE stocks
-              by company or symbol.
+            <p className="text-sm text-slate-500">
+              Search NSE stocks by company or symbol.
             </p>
-
           </div>
 
-
-          <SearchBar
-            onSearch={
-              setSearchQuery
-            }
-          />
-
+          <SearchBar onSearch={setSearchQuery} />
 
           {searchQuery && (
-
             <div className="mt-4">
-
               {isLoading && (
-
-                <div
-                  className="
-                    text-slate-400
-                  "
-                >
+                <div className="text-slate-400">
                   Searching...
                 </div>
-
               )}
-
 
               {isError && (
-
-                <div
-                  className="
-                    text-red-400
-                  "
-                >
-                  Unable to search
-                  stocks right now.
+                <div className="text-red-400">
+                  Unable to search stocks right now.
                 </div>
-
               )}
 
-
-              {!isLoading &&
-                !isError &&
-                data && (
-
-                  <MarketSearchResults
-                    results={
-                      data.results
-                    }
-                  />
-
-                )}
-
+              {!isLoading && !isError && data && (
+                <MarketSearchResults results={data.results} />
+              )}
             </div>
-
           )}
-
         </section>
 
+        {secondaryContentReady && (
+          <>
+            <section>
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold text-white">
+                  My Subscriptions
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Stocks you'll receive updates about.
+                </p>
+              </div>
 
-        {/* My Subscriptions */}
+              <Subscriptions />
+            </section>
 
-        <section>
+            <section className="mt-8">
+              <div className="mb-4">
+                <h2 className="text-xl font-semibold text-white">
+                  Latest Updates
+                </h2>
+                <p className="text-sm text-slate-500">
+                  Important events from your subscribed stocks.
+                </p>
+              </div>
 
-          <div className="mb-4">
-
-            <h2
-              className="
-                text-xl
-                font-semibold
-                text-white
-              "
-            >
-              My Subscriptions
-            </h2>
-
-            <p
-              className="
-                text-sm
-                text-slate-500
-              "
-            >
-              Stocks you'll receive
-              updates about.
-            </p>
-
-          </div>
-
-
-          <Subscriptions />
-
-        </section>
-
-
-        {/* Financial Results */}
-
-        <section className="mt-8">
-
-          <div className="mb-4">
-
-            <h2
-              className="
-                text-xl
-                font-semibold
-                text-white
-              "
-            >
-              Latest Financial Results
-            </h2>
-
-            <p
-              className="
-                text-sm
-                text-slate-500
-              "
-            >
-              Latest quarterly financial
-              performance.
-            </p>
-
-          </div>
-
-
-        </section>
-
-
-        {/* Latest Updates */}
-
-        <section className="mt-8">
-
-          <div className="mb-4">
-
-            <h2
-              className="
-                text-xl
-                font-semibold
-                text-white
-              "
-            >
-              Latest Updates
-            </h2>
-
-            <p
-              className="
-                text-sm
-                text-slate-500
-              "
-            >
-              Important events from your
-              subscribed stocks.
-            </p>
-
-          </div>
-
-
-          <UpdateStats />
-
-          <UpdateFeed />
-
-        </section>
-
-
+              <UpdateStats />
+              <UpdateFeed />
+            </section>
+          </>
+        )}
       </div>
-
     </main>
   );
 }
