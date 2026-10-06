@@ -1,5 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from sqlalchemy.orm import Session
+
+from app.db.database import get_db
 from app.schemas.market_regime import MarketRegimeResponse
 from app.services.market_regime_service import MarketRegimeService
 
@@ -14,7 +17,7 @@ router = APIRouter(
     "",
     response_model=MarketRegimeResponse,
 )
-def get_market_regime():
-    # MarketRegimeService uses the persisted market snapshot and cached quote
-    # layer. The endpoint remains lightweight enough for dashboard polling.
-    return MarketRegimeService().get()
+def get_market_regime(
+    db: Session = Depends(get_db),
+):
+    return MarketRegimeService(db).get()
