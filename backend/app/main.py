@@ -12,6 +12,7 @@ from app.api.indices import router as indices_router
 from app.api.market_data import router as market_data_router
 from app.api.market_news import router as market_news_router
 from app.api.market_regime import router as market_regime_router
+from app.api.market_summary import router as market_summary_router
 from app.api.screener import router as screener_router
 from app.api.stock_search import router as stock_search_router
 from app.api.stocks import router as stocks_router
@@ -29,8 +30,6 @@ from app.services.update_worker import update_worker
 
 
 async def delayed_auto_sales_worker():
-    # Vehicle sales data is daily and can involve a slow external request.
-    # Never let it compete with the first dashboard requests.
     await asyncio.sleep(60)
     await auto_sales_worker()
 
@@ -93,6 +92,7 @@ app.include_router(watchlist_router)
 app.include_router(market_data_router)
 app.include_router(indices_router)
 app.include_router(market_regime_router)
+app.include_router(market_summary_router)
 app.include_router(market_news_router)
 app.include_router(stock_search_router)
 app.include_router(subscriptions_router)
