@@ -39,8 +39,10 @@ function IndexRow({
       <span className="text-sm text-slate-400">{label}</span>
       <div className="text-right">
         <div className="font-semibold text-white">{format(value)}</div>
-        <div className={${text-xs \${changeClass(change)${}>
-          {change == null ? "—" : \${change >= 0 ? "+" : ""${}{change == null ? "" : change.toFixed(2)}%
+        <div className={"text-xs " + changeClass(change)}>
+          {change == null
+            ? "—"
+            : (change >= 0 ? "+" : "") + change.toFixed(2) + "%"}
         </div>
       </div>
     </div>
@@ -96,7 +98,12 @@ export function MarketSummaryToday() {
         </div>
 
         <div className="text-right">
-          <div className={${inline-flex rounded-full border px-3 py-1 text-xs font-bold \${regimeClass(data.regime)${}>
+          <div
+            className={
+              "inline-flex rounded-full border px-3 py-1 text-xs font-bold " +
+              regimeClass(data.regime)
+            }
+          >
             {data.regime}
           </div>
           <div className="mt-2 text-xs text-slate-500">
@@ -119,10 +126,33 @@ export function MarketSummaryToday() {
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <MiniMetric label="India VIX" value={format(data.india_vix)} change={data.india_vix_change_percent} />
-          <MiniMetric label="Breadth > 50-DMA" value={data.breadth_above_50dma_pct == null ? "—" : \${data.breadth_above_50dma_pct.toFixed(0)${%} />
-          <MiniMetric label="Brent Crude" value={data.brent == null ? "—" : \${$${{format(data.brent)}} change={data.brent_change_percent} />
-          <MiniMetric label="USD/INR" value={format(data.usd_inr)} change={data.usd_inr_change_percent} />
+          <MiniMetric
+            label="India VIX"
+            value={format(data.india_vix)}
+            change={data.india_vix_change_percent}
+          />
+          <MiniMetric
+            label="Breadth > 50-DMA"
+            value={
+              data.breadth_above_50dma_pct == null
+                ? "—"
+                : data.breadth_above_50dma_pct.toFixed(0) + "%"
+            }
+          />
+          <MiniMetric
+            label="Brent Crude"
+            value={
+              data.brent == null
+                ? "—"
+                : "$" + format(data.brent)
+            }
+            change={data.brent_change_percent}
+          />
+          <MiniMetric
+            label="USD/INR"
+            value={format(data.usd_inr)}
+            change={data.usd_inr_change_percent}
+          />
         </div>
       </div>
 
@@ -174,8 +204,10 @@ function MiniMetric({
         {value}
       </div>
       {change !== undefined && (
-        <div className={${mt-1 text-xs \${changeClass(change ?? null)${}>
-          {change == null ? "—" : \${change >= 0 ? "+" : ""${}{change == null ? "" : change.toFixed(2)}%
+        <div className={"mt-1 text-xs " + changeClass(change ?? null)}>
+          {change == null
+            ? "—"
+            : (change >= 0 ? "+" : "") + change.toFixed(2) + "%"}
         </div>
       )}
     </div>
