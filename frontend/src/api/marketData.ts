@@ -41,6 +41,26 @@ export async function getQuote(
   return response.data;
 }
 
+export async function getQuotes(
+  symbols: string[],
+): Promise<StockQuote[]> {
+  if (!symbols.length) {
+    return [];
+  }
+
+  const response =
+    await apiClient.get<StockQuote[]>(
+      "/market/quotes",
+      {
+        params: {
+          symbols: symbols.join(","),
+        },
+      },
+    );
+
+  return response.data;
+}
+
 export async function getHistory(
   symbol: string,
   period = "1mo",
