@@ -25,12 +25,19 @@ from app.services.universe_worker import universe_worker
 from app.services.update_worker import update_worker
 
 
+async def delayed_auto_sales_worker():
+    # Vehicle sales data is daily and can involve a slow external request.
+    # Never let it compete with the first dashboard requests.
+    await asyncio.sleep(60)
+    await auto_sales_worker()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     initialize_database()
 
     worker_task = asyncio.create_task(update_worker())
-    auto_sales_task = asyncio.create_task(auto_sales_worker())
+    auto_sales_task = asyncio.create_task(delayed_auto_sales_worker())
     universe_task = asyncio.create_task(universe_worker())
     market_snapshot_task = asyncio.create_task(market_snapshot_worker())
     screener_task = asyncio.create_task(screener_worker())
@@ -38,10 +45,22 @@ async def lifespan(app: FastAPI):
     try:
         yield
     finally:
-        for task in (worker_task, auto_sales_task, universe_task, market_snapshot_task, screener_task):
+        for task in (
+            worker_task,
+            auto_sales_task,
+            universe_task,
+            market_snapshot_task,
+            screener_task,
+        ):
             task.cancel()
 
-        for task in (worker_task, auto_sales_task, universe_task, market_snapshot_task, screener_task):
+        for task in (
+            worker_task,
+            auto_sales_task,
+            universe_task,
+            market_snapshot_task,
+            screener_task,
+        ):
             try:
                 await task
             except asyncio.CancelledError:
