@@ -24,57 +24,102 @@ class MarketNewsItem:
 
 
 class MarketNewsService:
-    """Fetch only fresh Indian market news from today or the previous day."""
+    """Fetch fresh, stock-specific Indian market news."""
 
     CACHE_TTL_SECONDS = 300
     FETCH_TIMEOUT_SECONDS = 5
     INDIA_TZ = ZoneInfo("Asia/Kolkata")
 
+    # Keep the feed focused on listed companies and tradeable stock events.
+    # Macro-only headlines are intentionally excluded from this dashboard.
     QUERIES = (
         (
-            "Market",
-            "Indian stock market Nifty Sensex stocks India",
+            "Stock Moves",
+            "Indian stocks shares today NSE BSE stock price gain fall company",
         ),
         (
-            "Macro",
-            "India RBI inflation interest rates rupee economy markets",
+            "Earnings & Results",
+            "India listed companies earnings results revenue profit EPS stocks NSE BSE",
         ),
         (
-            "Corporate",
-            "India stocks earnings results companies business markets",
+            "Corporate Actions",
+            "Indian stocks dividend bonus split buyback merger acquisition order stake pledge NSE BSE",
         ),
         (
-            "Flows & Commodities",
-            "India FII DII crude oil gold markets stocks",
+            "Brokerage & Ratings",
+            "Indian stocks brokerage upgrade downgrade target price buy sell rating NSE BSE",
+        ),
+        (
+            "IPO & New Listings",
+            "India IPO listing shares stock market NSE BSE company IPO today",
         ),
     )
 
-    IMPORTANT_KEYWORDS = (
-        "rbi",
-        "rate cut",
-        "rate hike",
-        "inflation",
-        "nifty",
-        "sensex",
-        "fii",
-        "dii",
-        "crude",
-        "oil",
-        "rupee",
-        "tariff",
+    STOCK_KEYWORDS = (
+        "stock",
+        "stocks",
+        "share",
+        "shares",
+        "nse",
+        "bse",
+        "listed",
+        "company",
         "earnings",
         "results",
-        "profit",
         "revenue",
-        "ipo",
+        "profit",
+        "eps",
+        "ebitda",
+        "order",
+        "contract",
+        "dividend",
+        "bonus",
+        "split",
+        "buyback",
         "merger",
         "acquisition",
-        "order",
-        "guidance",
-        "downgrade",
+        "stake",
+        "pledge",
+        "ipo",
+        "listing",
+        "target price",
+        "price target",
         "upgrade",
-        "default",
+        "downgrade",
+        "buy rating",
+        "sell rating",
+        "block deal",
+        "bulk deal",
+        "promoter",
+        "fund raising",
+        "fundraise",
+        "capacity",
+        "guidance",
+    )
+
+    HIGH_IMPACT_KEYWORDS = (
+        "results",
+        "earnings",
+        "profit",
+        "revenue",
+        "order",
+        "contract",
+        "acquisition",
+        "merger",
+        "buyback",
+        "dividend",
+        "bonus",
+        "split",
+        "upgrade",
+        "downgrade",
+        "target price",
+        "block deal",
+        "bulk deal",
+        "promoter",
+        "fund raising",
+        "fundraise",
         "fraud",
+        "default",
     )
 
     _cache: list[MarketNewsItem] | None = None
@@ -85,12 +130,9 @@ class MarketNewsService:
     def _news_window(
         cls,
     ) -> tuple[datetime, datetime]:
-        """Return the current India day plus the immediately previous day."""
         now_ist = datetime.now(
             timezone.utc,
-        ).astimezone(
-            cls.INDIA_TZ,
-        )
+        ).astimezone(cls.INDIA_TZ)
 
         today_start = now_ist.replace(
             hour=0,
@@ -99,9 +141,7 @@ class MarketNewsService:
             microsecond=0,
         )
 
-        start = today_start - timedelta(
-            days=1,
-        )
+        start = today_start - timedelta(days=1)
 
         return (
             start.astimezone(timezone.utc),
@@ -110,8 +150,6 @@ class MarketNewsService:
 
     @classmethod
     def _rss_url(cls, query: str) -> str:
-        # Ask Google News for a narrow freshness window as well as applying
-        # our exact India-calendar-day filter after parsing.
         query = f"{query} when:2d"
         return (
             "https://news.google.com/rss/search?"
@@ -129,11 +167,23 @@ class MarketNewsService:
         ).strip()
 
     @classmethod
-    def _importance(cls, title: str) -> str:
+    def _stock_relevance(cls, title: str) -> int:
+        lowered = title.lower()
+        return sum(
+            1
+            for keyword in cls.STOCK_KEYWORDS
+            if keyword in lowered
+        )
+
+    @classmethod
+    def _importance(
+        cls,
+        title: str,
+    ) -> str:
         lowered = title.lower()
         matches = sum(
             keyword in lowered
-            for keyword in cls.IMPORTANT_KEYWORDS
+            for keyword in cls.HIGH_IMPACT_KEYWORDS
         )
 
         if matches >= 2:
@@ -143,7 +193,9 @@ class MarketNewsService:
         return "LOW"
 
     @staticmethod
-    def _parse_date(value: str | None) -> datetime:
+    def _parse_date(
+        value: str | None,
+    ) -> datetime:
         if not value:
             return datetime.now(timezone.utc)
 
@@ -155,17 +207,13 @@ class MarketNewsService:
                     tzinfo=timezone.utc,
                 )
 
-            return result.astimezone(
-                timezone.utc,
-            )
+            return result.astimezone(timezone.utc)
         except (
             TypeError,
             ValueError,
             OverflowError,
         ):
-            return datetime.now(
-                timezone.utc,
-            )
+            return datetime.now(timezone.utc)
 
     @classmethod
     def _fetch_query(
@@ -178,12 +226,9 @@ class MarketNewsService:
             headers={
                 "User-Agent": (
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                    "AppleWebKit/537.36 "
-                    "Chrome/154.0 Safari/537.36"
+                    "AppleWebKit/537.36 Chrome/154.0 Safari/537.36"
                 ),
-                "Accept": (
-                    "application/rss+xml, application/xml, text/xml"
-                ),
+                "Accept": "application/rss+xml, application/xml, text/xml",
             },
         )
 
@@ -214,9 +259,13 @@ class MarketNewsService:
             if not title or not link:
                 continue
 
-            # Strictly keep only today and yesterday in India time. This also
-            # protects us from stale RSS entries when Google News returns them.
             if pub_date < start_utc or pub_date > end_utc:
+                continue
+
+            # Relevance threshold prevents generic macro headlines from
+            # leaking into the stock-news dashboard.
+            relevance = cls._stock_relevance(title)
+            if relevance < 1:
                 continue
 
             items.append(
@@ -237,9 +286,7 @@ class MarketNewsService:
         cls,
         limit: int = 12,
     ) -> list[MarketNewsItem]:
-        now = datetime.now(
-            timezone.utc,
-        ).timestamp()
+        now = datetime.now(timezone.utc).timestamp()
 
         with cls._cache_lock:
             if (
@@ -252,7 +299,7 @@ class MarketNewsService:
 
         with ThreadPoolExecutor(
             max_workers=len(cls.QUERIES),
-            thread_name_prefix="market-news",
+            thread_name_prefix="stock-news",
         ) as executor:
             futures = {
                 executor.submit(
@@ -288,6 +335,7 @@ class MarketNewsService:
             ):
                 unique[key] = item
 
+        # Prioritize high-impact stock events, then freshness.
         ranked = sorted(
             unique.values(),
             key=lambda item: (
@@ -302,9 +350,7 @@ class MarketNewsService:
         with cls._cache_lock:
             cls._cache = ranked
             cls._cache_expires_at = (
-                datetime.now(
-                    timezone.utc,
-                ).timestamp()
+                datetime.now(timezone.utc).timestamp()
                 + cls.CACHE_TTL_SECONDS
             )
 
