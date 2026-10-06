@@ -10,6 +10,7 @@ from app.api.fundamental_analysis import router as fundamental_analysis_router
 from app.api.health import router as health_router
 from app.api.indices import router as indices_router
 from app.api.market_data import router as market_data_router
+from app.api.market_news import router as market_news_router
 from app.api.screener import router as screener_router
 from app.api.stock_search import router as stock_search_router
 from app.api.stocks import router as stocks_router
@@ -70,7 +71,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title=settings.APP_NAME,
-    version="1.0.0",
+    version=settings.APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -90,6 +91,7 @@ app.include_router(stocks_router)
 app.include_router(watchlist_router)
 app.include_router(market_data_router)
 app.include_router(indices_router)
+app.include_router(market_news_router)
 app.include_router(stock_search_router)
 app.include_router(subscriptions_router)
 app.include_router(updates_router)
