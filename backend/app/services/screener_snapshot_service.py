@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.screener_snapshot import ScreenerSnapshot
@@ -30,7 +30,10 @@ class ScreenerSnapshotService:
         offset = 0
 
         while offset < universe_limit:
-            batch_limit = min(batch_size, universe_limit - offset)
+            batch_limit = min(
+                batch_size,
+                universe_limit - offset,
+            )
             filters = ScreenerFilters(
                 min_score=0,
                 min_roe=-100,
@@ -43,18 +46,27 @@ class ScreenerSnapshotService:
                 universe_limit=batch_limit,
             )
 
-            total_universe, results = StockScreenerService(self.db).screen(
-                filters,
-                offset=offset,
+            total_universe, results = (
+                StockScreenerService(self.db).screen(
+                    filters,
+                    offset=offset,
+                )
             )
 
             for result in results:
                 symbol = result.symbol.upper()
                 previous = all_results_by_symbol.get(symbol)
+
                 if (
                     previous is None
-                    or (result.score, result.data_completeness)
-                    > (previous.score, previous.data_completeness)
+                    or (
+                        result.score,
+                        result.data_completeness,
+                    )
+                    > (
+                        previous.score,
+                        previous.data_completeness,
+                    )
                 ):
                     all_results_by_symbol[symbol] = result
 
@@ -65,7 +77,10 @@ class ScreenerSnapshotService:
         all_results = sorted(
             all_results_by_symbol.values(),
             key=lambda item: (
-                item.verdict not in {"BUY", "STRONG BUY"},
+                item.verdict not in {
+                    "BUY",
+                    "STRONG BUY",
+                },
                 -item.score,
                 -item.data_completeness,
                 item.symbol,
@@ -75,7 +90,9 @@ class ScreenerSnapshotService:
         if not all_results:
             return 0
 
-        self.db.execute(delete(ScreenerSnapshot))
+        self.db.execute(
+            delete(ScreenerSnapshot)
+        )
         now = datetime.now(timezone.utc)
 
         for result in all_results:
@@ -119,73 +136,76 @@ class ScreenerSnapshotService:
     def get_results(
         self,
         filters: ScreenerFilters,
-    ) -> tuple[int, list[ScreenerResult], datetime | None]:
-        total_universe = self.db.scalar(
-            select(func.count())
-            .select_from(Stock)
-            .where(Stock.exchange == "NSE")
-        ) or 0
-
-        query = select(ScreenerSnapshot).order_by(
-            ScreenerSnapshot.score.desc(),
-            ScreenerSnapshot.data_completeness.desc(),
-            ScreenerSnapshot.symbol.asc(),
+    ) -> tuple[
+        int,
+        list[ScreenerResult],
+        datetime | None,
+    ]:
+        total_universe = (
+            self.db.scalar(
+                select(func.count())
+                .select_from(Stock)
+                .where(Stock.exchange == "NSE")
+            )
+            or 0
         )
-        rows = self.db.execute(query).scalars().all()
+
+        # Push the screener filters into SQL instead of loading the entire
+        # snapshot table and filtering thousands of rows in Python on every
+        # page request.
+        market_cap_floor = (
+            filters.min_market_cap * 10_000_000
+        )
+
+        query = (
+            select(ScreenerSnapshot)
+            .where(
+                ScreenerSnapshot.score >= filters.min_score,
+                ScreenerSnapshot.data_completeness >= 75,
+                ScreenerSnapshot.roe.is_not(None),
+                ScreenerSnapshot.roce.is_not(None),
+                ScreenerSnapshot.pe.is_not(None),
+                ScreenerSnapshot.pe > 0,
+                ScreenerSnapshot.price.is_not(None),
+                ScreenerSnapshot.sma50.is_not(None),
+                ScreenerSnapshot.sma200.is_not(None),
+                ScreenerSnapshot.rsi14.is_not(None),
+                ScreenerSnapshot.momentum_6m.is_not(None),
+                ScreenerSnapshot.roe >= filters.min_roe,
+                ScreenerSnapshot.pe <= filters.max_pe,
+                ScreenerSnapshot.revenue_growth.is_not(None),
+                ScreenerSnapshot.revenue_growth
+                >= filters.min_revenue_growth,
+                ScreenerSnapshot.profit_growth.is_not(None),
+                ScreenerSnapshot.profit_growth
+                >= filters.min_profit_growth,
+                or_(
+                    ScreenerSnapshot.debt_to_equity.is_(None),
+                    ScreenerSnapshot.debt_to_equity
+                    <= filters.max_debt_to_equity,
+                ),
+                or_(
+                    ScreenerSnapshot.market_cap.is_(None),
+                    ScreenerSnapshot.market_cap
+                    >= market_cap_floor,
+                ),
+            )
+            .order_by(
+                ScreenerSnapshot.score.desc(),
+                ScreenerSnapshot.data_completeness.desc(),
+                ScreenerSnapshot.symbol.asc(),
+            )
+            .limit(filters.limit)
+        )
+
+        rows = self.db.execute(
+            query
+        ).scalars().all()
 
         results: list[ScreenerResult] = []
-        seen_symbols: set[str] = set()
 
         for row in rows:
-            symbol = row.symbol.upper()
-            if symbol in seen_symbols:
-                continue
-            seen_symbols.add(symbol)
-
-            # Apply the same quality gate at read time as during snapshot
-            # generation. This immediately removes stale/legacy rows with
-            # missing core metrics before the next background rebuild.
-            if row.roe is None or row.roce is None:
-                continue
-            if row.pe is None or row.pe <= 0:
-                continue
-            if (
-                row.price is None
-                or row.sma50 is None
-                or row.sma200 is None
-                or row.rsi14 is None
-                or row.momentum_6m is None
-            ):
-                continue
-            if row.data_completeness < 75:
-                continue
-
-            if row.score < filters.min_score:
-                continue
-            if row.roe < filters.min_roe:
-                continue
-            if row.pe > filters.max_pe:
-                continue
-            if (
-                row.debt_to_equity is not None
-                and row.debt_to_equity > filters.max_debt_to_equity
-            ):
-                continue
-            if (
-                row.revenue_growth is None
-                or row.revenue_growth < filters.min_revenue_growth
-            ):
-                continue
-            if (
-                row.profit_growth is None
-                or row.profit_growth < filters.min_profit_growth
-            ):
-                continue
-            if (
-                row.market_cap is not None
-                and row.market_cap < filters.min_market_cap * 10_000_000
-            ):
-                continue
+            peg = row.peg
 
             results.append(
                 ScreenerResult(
@@ -199,7 +219,7 @@ class ScreenerSnapshotService:
                     price=row.price,
                     market_cap=row.market_cap,
                     pe=row.pe,
-                    peg=row.peg,
+                    peg=peg,
                     pb=row.pb,
                     roe=row.roe,
                     roce=row.roce,
@@ -220,8 +240,14 @@ class ScreenerSnapshotService:
                 )
             )
 
-            if len(results) >= filters.limit:
-                break
+        snapshot_at = (
+            rows[0].snapshot_at
+            if rows
+            else None
+        )
 
-        snapshot_at = rows[0].snapshot_at if rows else None
-        return int(total_universe), results, snapshot_at
+        return (
+            int(total_universe),
+            results,
+            snapshot_at,
+        )
