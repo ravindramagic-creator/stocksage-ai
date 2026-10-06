@@ -2,11 +2,12 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from html import unescape
 from urllib.parse import quote_plus
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 import re
 import threading
 import xml.etree.ElementTree as ET
@@ -23,10 +24,11 @@ class MarketNewsItem:
 
 
 class MarketNewsService:
-    """Fetch and cache high-signal Indian market news from public RSS feeds."""
+    """Fetch only fresh Indian market news from today or the previous day."""
 
     CACHE_TTL_SECONDS = 300
     FETCH_TIMEOUT_SECONDS = 5
+    INDIA_TZ = ZoneInfo("Asia/Kolkata")
 
     QUERIES = (
         (
@@ -80,7 +82,37 @@ class MarketNewsService:
     _cache_lock = threading.Lock()
 
     @classmethod
+    def _news_window(
+        cls,
+    ) -> tuple[datetime, datetime]:
+        """Return the current India day plus the immediately previous day."""
+        now_ist = datetime.now(
+            timezone.utc,
+        ).astimezone(
+            cls.INDIA_TZ,
+        )
+
+        today_start = now_ist.replace(
+            hour=0,
+            minute=0,
+            second=0,
+            microsecond=0,
+        )
+
+        start = today_start - timedelta(
+            days=1,
+        )
+
+        return (
+            start.astimezone(timezone.utc),
+            now_ist.astimezone(timezone.utc),
+        )
+
+    @classmethod
     def _rss_url(cls, query: str) -> str:
+        # Ask Google News for a narrow freshness window as well as applying
+        # our exact India-calendar-day filter after parsing.
+        query = f"{query} when:2d"
         return (
             "https://news.google.com/rss/search?"
             f"q={quote_plus(query)}&hl=en-IN&gl=IN&ceid=IN:en"
@@ -90,7 +122,11 @@ class MarketNewsService:
     def _clean(value: str | None) -> str:
         if not value:
             return ""
-        return re.sub(r"\s+", " ", unescape(value)).strip()
+        return re.sub(
+            r"\s+",
+            " ",
+            unescape(value),
+        ).strip()
 
     @classmethod
     def _importance(cls, title: str) -> str:
@@ -113,13 +149,23 @@ class MarketNewsService:
 
         try:
             result = parsedate_to_datetime(value)
+
             if result.tzinfo is None:
                 result = result.replace(
                     tzinfo=timezone.utc,
                 )
-            return result.astimezone(timezone.utc)
-        except (TypeError, ValueError, OverflowError):
-            return datetime.now(timezone.utc)
+
+            return result.astimezone(
+                timezone.utc,
+            )
+        except (
+            TypeError,
+            ValueError,
+            OverflowError,
+        ):
+            return datetime.now(
+                timezone.utc,
+            )
 
     @classmethod
     def _fetch_query(
@@ -135,7 +181,9 @@ class MarketNewsService:
                     "AppleWebKit/537.36 "
                     "Chrome/154.0 Safari/537.36"
                 ),
-                "Accept": "application/rss+xml, application/xml, text/xml",
+                "Accept": (
+                    "application/rss+xml, application/xml, text/xml"
+                ),
             },
         )
 
@@ -146,6 +194,7 @@ class MarketNewsService:
             payload = response.read()
 
         root = ET.fromstring(payload)
+        start_utc, end_utc = cls._news_window()
         items: list[MarketNewsItem] = []
 
         for node in root.findall(".//item"):
@@ -165,6 +214,11 @@ class MarketNewsService:
             if not title or not link:
                 continue
 
+            # Strictly keep only today and yesterday in India time. This also
+            # protects us from stale RSS entries when Google News returns them.
+            if pub_date < start_utc or pub_date > end_utc:
+                continue
+
             items.append(
                 MarketNewsItem(
                     title=title,
@@ -176,14 +230,16 @@ class MarketNewsService:
                 )
             )
 
-        return items[:10]
+        return items[:20]
 
     @classmethod
     def get_latest(
         cls,
         limit: int = 12,
     ) -> list[MarketNewsItem]:
-        now = datetime.now(timezone.utc).timestamp()
+        now = datetime.now(
+            timezone.utc,
+        ).timestamp()
 
         with cls._cache_lock:
             if (
@@ -215,7 +271,6 @@ class MarketNewsService:
                 except Exception:
                     continue
 
-        # Deduplicate by normalized headline while keeping the newest version.
         unique: dict[str, MarketNewsItem] = {}
 
         for item in collected:
@@ -226,6 +281,7 @@ class MarketNewsService:
             ).strip()
 
             existing = unique.get(key)
+
             if (
                 existing is None
                 or item.published_at > existing.published_at
@@ -246,7 +302,9 @@ class MarketNewsService:
         with cls._cache_lock:
             cls._cache = ranked
             cls._cache_expires_at = (
-                datetime.now(timezone.utc).timestamp()
+                datetime.now(
+                    timezone.utc,
+                ).timestamp()
                 + cls.CACHE_TTL_SECONDS
             )
 
