@@ -21,23 +21,14 @@ export function Dashboard() {
   } = useMarketSearch(searchQuery);
 
   useEffect(() => {
-    // Keep the first paint focused on the market and stock search. Subscription
-    // and update-feed queries are secondary and can start just after the page
-    // becomes interactive.
-    const schedule = window.requestIdleCallback
-      ? window.requestIdleCallback(() => {
-          setSecondaryContentReady(true);
-        }, { timeout: 700 })
-      : window.setTimeout(() => {
-          setSecondaryContentReady(true);
-        }, 400);
+    // Keep the first paint focused on the market and search. Secondary
+    // subscription/update queries start shortly afterward.
+    const timer = window.setTimeout(() => {
+      setSecondaryContentReady(true);
+    }, 400);
 
     return () => {
-      if (typeof schedule === "number") {
-        window.clearTimeout(schedule);
-      } else {
-        window.cancelIdleCallback?.(schedule);
-      }
+      window.clearTimeout(timer);
     };
   }, []);
 
