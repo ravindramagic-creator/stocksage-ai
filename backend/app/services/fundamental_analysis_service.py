@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from math import isfinite
 
 from sqlalchemy import select
@@ -87,7 +88,12 @@ class FundamentalAnalysisService:
             )
         )
 
-        if snapshot is not None:
+        if (
+            snapshot is not None
+            and snapshot.roe is not None
+            and snapshot.roce is not None
+            and snapshot.pe is not None
+        ):
             return snapshot
 
         stock = self.db.scalar(
@@ -104,17 +110,18 @@ class FundamentalAnalysisService:
             stale_minutes=30,
         )
 
-        snapshot = MarketSnapshot(
-            symbol=symbol,
-            status="pending",
-        )
-        self.db.add(snapshot)
+        if snapshot is None:
+            snapshot = MarketSnapshot(
+                symbol=symbol,
+                status="pending",
+            )
+            self.db.add(snapshot)
 
         try:
             service._refresh_symbol(
                 stock,
                 snapshot,
-                service._now(),
+                datetime.now(timezone.utc),
             )
             self.db.commit()
             self.db.refresh(snapshot)
