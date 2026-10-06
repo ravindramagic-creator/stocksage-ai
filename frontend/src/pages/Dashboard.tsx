@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { MarketSummary } from "../components/MarketSummary";
+import { MarketSummaryToday } from "../components/MarketSummaryToday";
 import { MarketRegime } from "../components/MarketRegime";
 import { MarketNews } from "../components/MarketNews";
 import { MarketSearchResults } from "../components/MarketSearchResults";
@@ -23,8 +24,9 @@ export function Dashboard() {
   } = useMarketSearch(searchQuery);
 
   useEffect(() => {
-    // Let the market cards and search paint first. News, regime,
-    // subscriptions and updates then load without delaying the primary dashboard.
+    // Let the market cards and search paint first. The daily summary,
+    // regime, news, subscriptions and updates then load without delaying
+    // the primary dashboard.
     const timer = window.setTimeout(() => {
       setSecondaryContentReady(true);
     }, 400);
@@ -57,6 +59,10 @@ export function Dashboard() {
 
         {secondaryContentReady && (
           <>
+            <section className="mb-8">
+              <MarketSummaryToday />
+            </section>
+
             <section className="mb-8">
               <MarketRegime />
             </section>
