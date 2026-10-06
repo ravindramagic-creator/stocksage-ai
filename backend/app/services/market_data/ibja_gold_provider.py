@@ -1,4 +1,5 @@
 import re
+import time
 from datetime import datetime, timezone
 
 import requests
@@ -12,6 +13,9 @@ class IBJAGoldProvider(MarketDataProvider):
     """Fetch India's benchmark 24K/999 gold rate in INR per 10 grams."""
 
     URL = "https://www.ibjarates.com/index.aspx"
+    CACHE_TTL_SECONDS = 60
+    _cached_quote: StockQuote | None = None
+    _cached_at: float = 0.0
 
     def __init__(self, timeout: int = 10):
         self.timeout = timeout
@@ -21,7 +25,7 @@ class IBJAGoldProvider(MarketDataProvider):
                 "User-Agent": (
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
                     "AppleWebKit/537.36 (KHTML, like Gecko) "
-                    "Chrome/154.0 Safari/537.36"
+                    "Chrome/154.0 Safari/537.0"
                 ),
                 "Accept": "text/html,application/xhtml+xml,*/*;q=0.9",
                 "Accept-Language": "en-US,en;q=0.9",
@@ -36,6 +40,14 @@ class IBJAGoldProvider(MarketDataProvider):
             return None
 
     def get_quote(self, symbol: str) -> StockQuote:
+        now = time.monotonic()
+        cached = self.__class__._cached_quote
+        if (
+            cached is not None
+            and now - self.__class__._cached_at < self.CACHE_TTL_SECONDS
+        ):
+            return cached
+
         response = self.session.get(
             self.URL,
             timeout=self.timeout,
@@ -47,9 +59,6 @@ class IBJAGoldProvider(MarketDataProvider):
             "html.parser",
         ).get_text(" ", strip=True)
 
-        # The public IBJA page presents the latest Gold 999 AM/PM benchmark
-        # as rupees per 10 grams. Prefer PM, falling back to AM on days when
-        # the PM session is not available.
         match = re.search(
             r"Gold\s+999\s*\|\s*"
             r"([0-9,]+)\s*\|\s*"
@@ -57,8 +66,8 @@ class IBJAGoldProvider(MarketDataProvider):
             text,
             re.IGNORECASE,
         )
+
         if not match:
-            # Table extraction can collapse separators depending on markup.
             match = re.search(
                 r"Gold\s+999.*?"
                 r"([0-9]{5,6})\s+([0-9]{5,6})",
@@ -67,7 +76,6 @@ class IBJAGoldProvider(MarketDataProvider):
             )
 
         if not match:
-            # Latest 999 value shown in the page's large "1 Gram" card.
             match = re.search(
                 r"999\s+Purity\s+([0-9,]+)\s*\(1\s*Gram\)",
                 text,
@@ -76,10 +84,10 @@ class IBJAGoldProvider(MarketDataProvider):
             if match:
                 per_gram = self._float(match.group(1))
                 if per_gram is not None:
-                    return self._quote(
-                        per_gram * 10,
-                        None,
-                    )
+                    quote = self._quote(per_gram * 10, None)
+                    self.__class__._cached_quote = quote
+                    self.__class__._cached_at = now
+                    return quote
 
             raise ValueError("Unable to parse IBJA Gold 999 rate")
 
@@ -90,22 +98,10 @@ class IBJAGoldProvider(MarketDataProvider):
         if price is None:
             raise ValueError("IBJA Gold 999 rate is unavailable")
 
-        change_percent = None
-        # The page includes recent PM/AM history below the current row. A
-        # simple previous PM comparison gives a useful benchmark change.
-        history_match = re.search(
-            r"Gold\s+999\s*\|\s*"
-            r"[0-9,]+\s*\|\s*[0-9,]+.*?"
-            r"Previous\s+Dates\s+Rate",
-            text,
-            re.IGNORECASE,
-        )
-        _ = history_match  # Retain parsing focused on the benchmark price.
-
-        return self._quote(
-            price,
-            change_percent,
-        )
+        quote = self._quote(price, None)
+        self.__class__._cached_quote = quote
+        self.__class__._cached_at = now
+        return quote
 
     @staticmethod
     def _quote(
