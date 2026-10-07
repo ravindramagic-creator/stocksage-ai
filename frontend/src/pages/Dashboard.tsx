@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { MarketSummary } from "../components/MarketSummary";
+import { BestStocksScreener } from "../components/BestStocksScreener";
 import { MarketSummaryToday } from "../components/MarketSummaryToday";
 import { MarketRegime } from "../components/MarketRegime";
 import { MarketNews } from "../components/MarketNews";
@@ -66,6 +67,8 @@ export function Dashboard() {
             <section className="mb-8">
               <MarketRegime />
             </section>
+
+            <BestStocksScreener />
 
             <section className="mb-8">
               <MarketNews />
