@@ -6,6 +6,7 @@ from uuid import uuid4
 from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
+from app.models.market_snapshot import MarketSnapshot
 from app.models.screener_snapshot import ScreenerSnapshot
 from app.models.stock import Stock
 from app.schemas.screener import ScreenerFilters, ScreenerResult
