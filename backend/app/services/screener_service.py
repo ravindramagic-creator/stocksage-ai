@@ -91,24 +91,35 @@ class StockScreenerService:
         return sum(outcomes) / len(outcomes) if outcomes else None
 
     @staticmethod
-    def _technical_confirmation(snap: MarketSnapshot) -> bool:
-        if snap.price is None or snap.sma50 is None or snap.sma200 is None:
-            return False
-
+    def _technical_confirmation(
+        snap: MarketSnapshot,
+        filters: ScreenerFilters,
+    ) -> bool:
         if (
-            snap.price <= snap.sma50
-            or snap.price <= snap.sma200
-            or snap.sma50 <= snap.sma200
+            snap.price is None
+            or snap.sma50 is None
+            or snap.sma200 is None
+            or snap.rsi14 is None
+            or snap.rsi_weekly is None
+            or snap.rsi_monthly is None
+            or snap.momentum_3m is None
+            or snap.momentum_6m is None
         ):
             return False
 
-        if snap.momentum_6m is None or snap.momentum_6m <= 0:
-            return False
-
-        if snap.rsi14 is not None and not 45 <= snap.rsi14 <= 70:
-            return False
-
-        return True
+        # Exact multi-timeframe technical setup requested by the user:
+        # Daily RSI > 60, Weekly RSI > 60, Monthly RSI > 60,
+        # Price > 50-DMA, 50-DMA > 200-DMA, 3M Momentum > 0,
+        # and 6M Momentum > 0.
+        return (
+            snap.rsi14 > filters.min_daily_rsi
+            and snap.rsi_weekly > filters.min_weekly_rsi
+            and snap.rsi_monthly > filters.min_monthly_rsi
+            and snap.price > snap.sma50
+            and snap.sma50 > snap.sma200
+            and snap.momentum_3m > filters.min_momentum_3m
+            and snap.momentum_6m > filters.min_momentum_6m
+        )
 
     @staticmethod
     def _business_confirmation(
@@ -242,6 +253,9 @@ class StockScreenerService:
                 or snap.sma50 is None
                 or snap.sma200 is None
                 or snap.rsi14 is None
+                or snap.rsi_weekly is None
+                or snap.rsi_monthly is None
+                or snap.momentum_3m is None
                 or snap.momentum_6m is None
             ):
                 continue
@@ -358,6 +372,9 @@ class StockScreenerService:
                 snap.sma50,
                 snap.sma200,
                 snap.rsi14,
+                snap.rsi_weekly,
+                snap.rsi_monthly,
+                snap.momentum_3m,
                 snap.momentum_6m,
                 snap.target_upside,
                 beat_rate,
@@ -388,7 +405,7 @@ class StockScreenerService:
                     peg,
                     snap.pb,
                 )
-                and self._technical_confirmation(snap)
+                and self._technical_confirmation(snap, filters)
                 and self._analyst_confirmation(
                     beat_rate,
                     snap.target_upside,
@@ -429,6 +446,9 @@ class StockScreenerService:
                     sma50=snap.sma50,
                     sma200=snap.sma200,
                     rsi14=snap.rsi14,
+                    rsi_weekly=snap.rsi_weekly,
+                    rsi_monthly=snap.rsi_monthly,
+                    momentum_3m=snap.momentum_3m,
                     momentum_6m=snap.momentum_6m,
                     target_upside=snap.target_upside,
                     analyst_beat_rate=beat_rate,
