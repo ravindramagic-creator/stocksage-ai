@@ -62,6 +62,7 @@ export async function getScreenerResults(options: {
   minMonthlyRsi?: number;
   minMomentum3m?: number;
   minMomentum6m?: number;
+  mode?: "combined" | "fundamental" | "technical";
 }): Promise<ScreenerResponse> {
   const params = new URLSearchParams({
     min_score: String(options.minScore),
@@ -77,6 +78,7 @@ export async function getScreenerResults(options: {
     min_monthly_rsi: String(options.minMonthlyRsi ?? 60),
     min_momentum_3m: String(options.minMomentum3m ?? 0),
     min_momentum_6m: String(options.minMomentum6m ?? 0),
+    mode: options.mode ?? "combined",
   });
 
   const response = await fetch(`${API_BASE_URL}/screener?${params.toString()}`);
