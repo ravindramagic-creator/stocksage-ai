@@ -304,6 +304,9 @@ class MarketSnapshotService:
         row.status = "ok"
         row.error = None
 
+        # Fundamentals and technical history are intentionally isolated.
+        # A Yahoo fundamentals/rate-limit failure must not prevent RSI,
+        # moving-average and momentum calculation for the technical screener.
         try:
             data = self.yahoo_fundamentals.get_snapshot_data(symbol)
             info = data.get("info", {})
@@ -336,21 +339,24 @@ class MarketSnapshotService:
                 if target and row.price
                 else None
             )
+        except Exception as exc:
+            row.error = f"fundamentals unavailable: {str(exc)[:700]}"
+            row.status = "partial"
 
-            history = self.yahoo_fundamentals.get_history(symbol)
+        try:
+            history = self.market.get_history(
+                symbol=symbol,
+                period="2y",
+                interval="1d",
+            )
             closes = [
-                self._number(value)
-                for value in history.get("Close", []).tolist()
+                self._number(point.close)
+                for point in history.points
             ]
             closes = [value for value in closes if value is not None]
 
-            if len(closes) >= 50:
-                row.sma50 = sum(closes[-50:]) / 50
-            if len(closes) >= 200:
-                row.sma200 = sum(closes[-200:]) / 200
-
-            # Reset technical fields before recalculating so a shorter or
-            # incomplete provider response cannot leave stale indicators.
+            # Reset technical fields before recalculating so an incomplete
+            # provider response cannot leave stale indicators behind.
             row.sma50 = None
             row.sma200 = None
             row.rsi14 = None
@@ -374,18 +380,20 @@ class MarketSnapshotService:
 
             row.momentum_3m = self._momentum(closes, 63)
             row.momentum_6m = self._momentum(closes, 126)
-
-            if row.roe is None or row.roce is None:
-                row.status = "partial"
-                row.error = (
-                    "ROE/ROCE unavailable after statement-based calculation"
-                )
         except Exception as exc:
-            # Preserve any good values already in the snapshot. A provider
-            # outage must not erase usable historical scoring data.
-            row.error = f"partial snapshot: {str(exc)[:900]}"
-            if "cooling down" in str(exc).lower():
-                row.status = "partial"
+            row.error = f"{row.error + '; ' if row.error else ''}technical data unavailable: {str(exc)[:700]}"
+            row.status = "partial"
+
+        if (
+            row.roe is None
+            or row.roce is None
+            or row.rsi14 is None
+            or row.rsi_weekly is None
+            or row.rsi_monthly is None
+            or row.momentum_3m is None
+            or row.momentum_6m is None
+        ):
+            row.status = "partial"
 
         row.updated_at = now
 
