@@ -272,7 +272,17 @@ class MarketSnapshotService:
         # Revisit incomplete fundamental snapshots sooner so old missing ROE/ROCE
         # values do not stay in the screener for hours after a provider repair.
         fundamental_incomplete = row.roe is None or row.roce is None
-        retry_window = min(self.stale_seconds, 60 * 60) if fundamental_incomplete else self.stale_seconds
+        technical_incomplete = (
+            row.rsi_weekly is None
+            or row.rsi_monthly is None
+            or row.momentum_3m is None
+        )
+        incomplete = fundamental_incomplete or technical_incomplete
+        retry_window = (
+            min(self.stale_seconds, 60 * 60)
+            if incomplete
+            else self.stale_seconds
+        )
 
         return age >= retry_window
 
