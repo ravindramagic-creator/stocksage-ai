@@ -6,6 +6,57 @@ import {
   type ScreenerResult,
 } from "../api/screener";
 
+const TECHNICAL_FILTER_STORAGE_KEY = "stocksage.technicalScreenerFilters";
+
+type TechnicalFilters = {
+  dailyRsi: number;
+  weeklyRsi: number;
+  monthlyRsi: number;
+  momentum3m: number;
+  momentum6m: number;
+};
+
+const DEFAULT_TECHNICAL_FILTERS: TechnicalFilters = {
+  dailyRsi: 60,
+  weeklyRsi: 60,
+  monthlyRsi: 60,
+  momentum3m: 0,
+  momentum6m: 0,
+};
+
+function loadTechnicalFilters(): TechnicalFilters {
+  try {
+    const stored = window.localStorage.getItem(TECHNICAL_FILTER_STORAGE_KEY);
+    if (!stored) return DEFAULT_TECHNICAL_FILTERS;
+
+    const parsed = JSON.parse(stored) as Partial<TechnicalFilters>;
+    return {
+      dailyRsi:
+        typeof parsed.dailyRsi === "number"
+          ? parsed.dailyRsi
+          : DEFAULT_TECHNICAL_FILTERS.dailyRsi,
+      weeklyRsi:
+        typeof parsed.weeklyRsi === "number"
+          ? parsed.weeklyRsi
+          : DEFAULT_TECHNICAL_FILTERS.weeklyRsi,
+      monthlyRsi:
+        typeof parsed.monthlyRsi === "number"
+          ? parsed.monthlyRsi
+          : DEFAULT_TECHNICAL_FILTERS.monthlyRsi,
+      momentum3m:
+        typeof parsed.momentum3m === "number"
+          ? parsed.momentum3m
+          : DEFAULT_TECHNICAL_FILTERS.momentum3m,
+      momentum6m:
+        typeof parsed.momentum6m === "number"
+          ? parsed.momentum6m
+          : DEFAULT_TECHNICAL_FILTERS.momentum6m,
+    };
+  } catch {
+    return DEFAULT_TECHNICAL_FILTERS;
+  }
+}
+
 function fmt(value: number | null, digits = 1): string {
   return value === null ? "—" : value.toFixed(digits);
 }
@@ -88,10 +139,33 @@ export function BestStocksScreener() {
   const [maxDebt, setMaxDebt] = useState(1.5);
   const [minRevenueGrowth, setMinRevenueGrowth] = useState(10);
   const [minProfitGrowth, setMinProfitGrowth] = useState(10);
+  const [technicalFilters, setTechnicalFilters] =
+    useState<TechnicalFilters>(loadTechnicalFilters);
   const [data, setData] = useState<ScreenerResponse | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      TECHNICAL_FILTER_STORAGE_KEY,
+      JSON.stringify(technicalFilters),
+    );
+  }, [technicalFilters]);
+
+  function updateTechnicalFilter(
+    key: keyof TechnicalFilters,
+    value: number,
+  ) {
+    setTechnicalFilters((current) => ({
+      ...current,
+      [key]: Number.isFinite(value) ? value : 0,
+    }));
+  }
+
+  function resetTechnicalFilters() {
+    setTechnicalFilters(DEFAULT_TECHNICAL_FILTERS);
+  }
 
   async function runScreen() {
     setLoading(true);
@@ -108,6 +182,11 @@ export function BestStocksScreener() {
           minProfitGrowth,
           minMarketCap: 5000,
           limit: 10,
+          minDailyRsi: technicalFilters.dailyRsi,
+          minWeeklyRsi: technicalFilters.weeklyRsi,
+          minMonthlyRsi: technicalFilters.monthlyRsi,
+          minMomentum3m: technicalFilters.momentum3m,
+          minMomentum6m: technicalFilters.momentum6m,
         }),
       );
     } catch (err) {
@@ -142,7 +221,7 @@ export function BestStocksScreener() {
             AI Best Stocks
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Full NSE universe · Daily/Weekly/Monthly RSI &gt; 60 · Price &gt; 50-DMA · 50-DMA &gt; 200-DMA · 3M/6M momentum &gt; 0
+            Full NSE universe · Configurable technical trend screen
           </p>
         </div>
 
@@ -212,6 +291,112 @@ export function BestStocksScreener() {
             onChange={(e) => setMinProfitGrowth(Number(e.target.value))}
           />
         </label>
+      </div>
+
+      <div className="mt-5 rounded-lg border border-cyan-900/50 bg-slate-950/60 p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-white">
+              Technical Filter Configuration
+            </h3>
+            <p className="mt-1 text-xs text-slate-500">
+              Adjust the minimum RSI and momentum thresholds. Price &gt; 50-DMA
+              and 50-DMA &gt; 200-DMA remain mandatory trend confirmations.
+              Settings are saved in this browser.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={resetTechnicalFilters}
+            className="rounded border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:bg-slate-800"
+          >
+            Reset Technical Filters
+          </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+          <label className="text-xs text-slate-500">
+            Daily RSI &gt;
+            <input
+              className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={technicalFilters.dailyRsi}
+              onChange={(e) =>
+                updateTechnicalFilter("dailyRsi", Number(e.target.value))
+              }
+            />
+          </label>
+
+          <label className="text-xs text-slate-500">
+            Weekly RSI &gt;
+            <input
+              className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={technicalFilters.weeklyRsi}
+              onChange={(e) =>
+                updateTechnicalFilter("weeklyRsi", Number(e.target.value))
+              }
+            />
+          </label>
+
+          <label className="text-xs text-slate-500">
+            Monthly RSI &gt;
+            <input
+              className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={technicalFilters.monthlyRsi}
+              onChange={(e) =>
+                updateTechnicalFilter("monthlyRsi", Number(e.target.value))
+              }
+            />
+          </label>
+
+          <label className="text-xs text-slate-500">
+            3M Momentum &gt;
+            <input
+              className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+              type="number"
+              step="0.5"
+              value={technicalFilters.momentum3m}
+              onChange={(e) =>
+                updateTechnicalFilter("momentum3m", Number(e.target.value))
+              }
+            />
+          </label>
+
+          <label className="text-xs text-slate-500">
+            6M Momentum &gt;
+            <input
+              className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+              type="number"
+              step="0.5"
+              value={technicalFilters.momentum6m}
+              onChange={(e) =>
+                updateTechnicalFilter("momentum6m", Number(e.target.value))
+              }
+            />
+          </label>
+        </div>
+
+        <div className="mt-3 text-xs text-cyan-300">
+          Active technical rule: Daily RSI &gt; {technicalFilters.dailyRsi}
+          {" · "}Weekly RSI &gt; {technicalFilters.weeklyRsi}
+          {" · "}Monthly RSI &gt; {technicalFilters.monthlyRsi}
+          {" · "}3M Momentum &gt; {technicalFilters.momentum3m}%
+          {" · "}6M Momentum &gt; {technicalFilters.momentum6m}%
+          {" · "}Price &gt; 50-DMA
+          {" · "}50-DMA &gt; 200-DMA
+        </div>
       </div>
 
       <button
