@@ -65,7 +65,7 @@ class YahooFundamentalsProvider:
     def get_history(
         self,
         symbol: str,
-        period: str = "1y",
+        period: str = "2y",
         interval: str = "1d",
     ):
         self._wait()
