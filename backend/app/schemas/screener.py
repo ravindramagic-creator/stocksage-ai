@@ -27,6 +27,9 @@ class ScreenerResult(BaseModel):
     sma50: float | None = None
     sma200: float | None = None
     rsi14: float | None = None
+    rsi_weekly: float | None = None
+    rsi_monthly: float | None = None
+    momentum_3m: float | None = None
     momentum_6m: float | None = None
 
     target_upside: float | None = None
@@ -58,3 +61,9 @@ class ScreenerFilters(BaseModel):
     # NSE has well over 1,000 listed equities. Keep this comfortably above
     # the normal universe so the default screener evaluates the full master.
     universe_limit: int = Field(default=5000, ge=20, le=10000)
+    min_daily_rsi: float = Field(default=60, ge=0, le=100)
+    min_weekly_rsi: float = Field(default=60, ge=0, le=100)
+    min_monthly_rsi: float = Field(default=60, ge=0, le=100)
+    min_momentum_3m: float = Field(default=0, ge=-100, le=500)
+    min_momentum_6m: float = Field(default=0, ge=-100, le=500)
+    strict_technical: bool = True
