@@ -239,6 +239,59 @@ class ScreenerSnapshotService:
         )
 
         rows = self.db.execute(query).all()
+        fallback_mode = False
+
+        # The strict screen can legitimately return zero stocks when all
+        # multi-timeframe technical gates are enabled at once. Do not leave the
+        # UI empty in that case. Return the closest candidates that still meet
+        # the core fundamental/valuation filters, and label them as NEAR MATCH
+        # below. This keeps the strict filters intact while giving the user
+        # something actionable to inspect.
+        if not rows:
+            fallback_query = (
+                select(ScreenerSnapshot, technical)
+                .outerjoin(
+                    technical,
+                    technical.symbol == ScreenerSnapshot.symbol,
+                )
+                .where(
+                    ScreenerSnapshot.score >= filters.min_score,
+                    ScreenerSnapshot.roe.is_not(None),
+                    ScreenerSnapshot.roce.is_not(None),
+                    ScreenerSnapshot.pe.is_not(None),
+                    ScreenerSnapshot.pe > 0,
+                    live_price.is_not(None),
+                    live_sma50.is_not(None),
+                    live_sma200.is_not(None),
+                    live_daily_rsi.is_not(None),
+                    live_weekly_rsi.is_not(None),
+                    live_monthly_rsi.is_not(None),
+                    live_momentum_3m.is_not(None),
+                    live_momentum_6m.is_not(None),
+                    ScreenerSnapshot.roe >= filters.min_roe,
+                    ScreenerSnapshot.pe <= filters.max_pe,
+                    ScreenerSnapshot.revenue_growth.is_not(None),
+                    ScreenerSnapshot.revenue_growth >= filters.min_revenue_growth,
+                    ScreenerSnapshot.profit_growth.is_not(None),
+                    ScreenerSnapshot.profit_growth >= filters.min_profit_growth,
+                    or_(
+                        ScreenerSnapshot.debt_to_equity.is_(None),
+                        ScreenerSnapshot.debt_to_equity <= filters.max_debt_to_equity,
+                    ),
+                    or_(
+                        ScreenerSnapshot.market_cap.is_(None),
+                        ScreenerSnapshot.market_cap >= market_cap_floor,
+                    ),
+                )
+                .order_by(
+                    ScreenerSnapshot.score.desc(),
+                    ScreenerSnapshot.data_completeness.desc(),
+                    ScreenerSnapshot.symbol.asc(),
+                )
+                .limit(filters.limit)
+            )
+            rows = self.db.execute(fallback_query).all()
+            fallback_mode = bool(rows)
 
         results: list[ScreenerResult] = []
 
@@ -252,7 +305,7 @@ class ScreenerSnapshotService:
                     company_name=row.company_name,
                     sector=row.sector,
                     score=row.score,
-                    verdict=row.verdict,
+                    verdict="NEAR MATCH" if fallback_mode else row.verdict,
                     data_completeness=row.data_completeness,
                     price=(
                         technical_row.price
