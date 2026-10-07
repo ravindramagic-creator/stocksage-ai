@@ -25,6 +25,9 @@ class MarketSnapshot(Base):
     sma50: Mapped[float | None] = mapped_column(Float)
     sma200: Mapped[float | None] = mapped_column(Float)
     rsi14: Mapped[float | None] = mapped_column(Float)
+    rsi_weekly: Mapped[float | None] = mapped_column(Float)
+    rsi_monthly: Mapped[float | None] = mapped_column(Float)
+    momentum_3m: Mapped[float | None] = mapped_column(Float)
     momentum_6m: Mapped[float | None] = mapped_column(Float)
     analyst_beat_rate: Mapped[float | None] = mapped_column(Float)
     updated_at: Mapped[datetime] = mapped_column(
