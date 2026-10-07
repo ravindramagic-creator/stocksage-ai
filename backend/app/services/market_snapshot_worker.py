@@ -8,7 +8,7 @@ from app.services.market_snapshot_service import MarketSnapshotService
 
 logger = logging.getLogger("stocksage.market_snapshot_worker")
 
-BATCH_SIZE = 12
+BATCH_SIZE = 50
 REFRESH_INTERVAL_SECONDS = 60
 
 
