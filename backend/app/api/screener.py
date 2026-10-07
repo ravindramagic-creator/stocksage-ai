@@ -55,6 +55,7 @@ def get_screener(
     min_market_cap: float = Query(5000, ge=0),
     limit: int = Query(10, ge=1, le=100),
     universe_limit: int = Query(5000, ge=20, le=10000),
+    mode: str = Query("combined", pattern="^(combined|fundamental|technical)$"),
     min_daily_rsi: float = Query(60, gt=0, le=100),
     min_weekly_rsi: float = Query(60, gt=0, le=100),
     min_monthly_rsi: float = Query(60, gt=0, le=100),
@@ -79,7 +80,10 @@ def get_screener(
         min_momentum_3m,
         min_momentum_6m,
     )
-    total_universe, results, snapshot_at = ScreenerSnapshotService(db).get_results(filters)
+    total_universe, results, snapshot_at = ScreenerSnapshotService(db).get_results(
+        filters,
+        mode=mode,
+    )
 
     return ScreenerResponse(
         total_universe=total_universe,
