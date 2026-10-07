@@ -17,6 +17,11 @@ def _filters(
     min_profit_growth: float,
     min_market_cap: float,
     limit: int,
+    min_daily_rsi: float,
+    min_weekly_rsi: float,
+    min_monthly_rsi: float,
+    min_momentum_3m: float,
+    min_momentum_6m: float,
 ) -> ScreenerFilters:
     return ScreenerFilters(
         min_score=min_score,
@@ -44,6 +49,11 @@ def get_screener(
     min_market_cap: float = Query(5000, ge=0),
     limit: int = Query(10, ge=1, le=100),
     universe_limit: int = Query(5000, ge=20, le=10000),
+    min_daily_rsi: float = Query(60, gt=0, le=100),
+    min_weekly_rsi: float = Query(60, gt=0, le=100),
+    min_monthly_rsi: float = Query(60, gt=0, le=100),
+    min_momentum_3m: float = Query(0),
+    min_momentum_6m: float = Query(0),
     db: Session = Depends(get_db),
 ):
     # Important: never call StockScreenerService here. The expensive calculation
@@ -57,6 +67,11 @@ def get_screener(
         min_profit_growth,
         min_market_cap,
         limit,
+        min_daily_rsi,
+        min_weekly_rsi,
+        min_monthly_rsi,
+        min_momentum_3m,
+        min_momentum_6m,
     )
     total_universe, results, snapshot_at = ScreenerSnapshotService(db).get_results(filters)
 
@@ -67,7 +82,9 @@ def get_screener(
         data_source="Persistent StockSage screener snapshot built from NSE universe",
         methodology=(
             "Background snapshot: 50% fundamental, 20% valuation, 20% technical, "
-            "10% analyst. HTTP requests only filter the persisted Top-N snapshot; "
+            "10% analyst. The technical gate requires Daily/Weekly/Monthly RSI "
+            "> 60, Price > 50-DMA, 50-DMA > 200-DMA, and 3M/6M momentum > 0. "
+            "HTTP requests only filter the persisted snapshot; "
             "they never query Yahoo/NSE or calculate indicators synchronously. "
             f"Snapshot time: {snapshot_at.isoformat() if snapshot_at else 'not yet available'}."
         ),
