@@ -20,6 +20,9 @@ export interface ScreenerResult {
   sma50: number | null;
   sma200: number | null;
   rsi14: number | null;
+  rsi_weekly: number | null;
+  rsi_monthly: number | null;
+  momentum_3m: number | null;
   momentum_6m: number | null;
   target_upside: number | null;
   analyst_beat_rate: number | null;
@@ -54,6 +57,11 @@ export async function getScreenerResults(options: {
   minProfitGrowth: number;
   minMarketCap: number;
   limit: number;
+  minDailyRsi?: number;
+  minWeeklyRsi?: number;
+  minMonthlyRsi?: number;
+  minMomentum3m?: number;
+  minMomentum6m?: number;
 }): Promise<ScreenerResponse> {
   const params = new URLSearchParams({
     min_score: String(options.minScore),
@@ -64,6 +72,11 @@ export async function getScreenerResults(options: {
     min_profit_growth: String(options.minProfitGrowth),
     min_market_cap: String(options.minMarketCap),
     limit: String(options.limit),
+    min_daily_rsi: String(options.minDailyRsi ?? 60),
+    min_weekly_rsi: String(options.minWeeklyRsi ?? 60),
+    min_monthly_rsi: String(options.minMonthlyRsi ?? 60),
+    min_momentum_3m: String(options.minMomentum3m ?? 0),
+    min_momentum_6m: String(options.minMomentum6m ?? 0),
   });
 
   const response = await fetch(`${API_BASE_URL}/screener?${params.toString()}`);
@@ -90,6 +103,9 @@ export async function getScreenerResults(options: {
       sma50: toNumber(item.sma50),
       sma200: toNumber(item.sma200),
       rsi14: toNumber(item.rsi14),
+      rsi_weekly: toNumber(item.rsi_weekly),
+      rsi_monthly: toNumber(item.rsi_monthly),
+      momentum_3m: toNumber(item.momentum_3m),
       momentum_6m: toNumber(item.momentum_6m),
       target_upside: toNumber(item.target_upside),
       analyst_beat_rate: toNumber(item.analyst_beat_rate),
