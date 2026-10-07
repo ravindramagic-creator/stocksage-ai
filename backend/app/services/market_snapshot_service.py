@@ -45,16 +45,76 @@ class MarketSnapshotService:
 
     @classmethod
     def _rsi(cls, closes: list[float], period: int = 14) -> float | None:
+        """Return the latest Wilder-style RSI value."""
         if len(closes) <= period:
             return None
-        changes = [b - a for a, b in zip(closes[-period - 1:], closes[-period:])]
-        gains = [max(change, 0.0) for change in changes]
-        losses = [max(-change, 0.0) for change in changes]
+
+        changes = [
+            current - previous
+            for previous, current in zip(closes[:-1], closes[1:])
+        ]
+
+        gains = [max(change, 0.0) for change in changes[:period]]
+        losses = [max(-change, 0.0) for change in changes[:period]]
         avg_gain = sum(gains) / period
         avg_loss = sum(losses) / period
+
+        for change in changes[period:]:
+            gain = max(change, 0.0)
+            loss = max(-change, 0.0)
+            avg_gain = ((avg_gain * (period - 1)) + gain) / period
+            avg_loss = ((avg_loss * (period - 1)) + loss) / period
+
         if avg_loss == 0:
             return 100.0 if avg_gain else 50.0
+
         return 100.0 - 100.0 / (1.0 + avg_gain / avg_loss)
+
+    @classmethod
+    def _periodic_closes(cls, history, period: str) -> list[float]:
+        """Collapse daily closes into the last close of each week or month."""
+        buckets: dict[tuple[int, int], float] = {}
+
+        if history is None:
+            return []
+
+        try:
+            close_series = history["Close"]
+        except (KeyError, TypeError):
+            return []
+
+        for timestamp, raw_close in close_series.items():
+            close = cls._number(raw_close)
+            if close is None:
+                continue
+
+            try:
+                dt = timestamp.to_pydatetime()
+            except AttributeError:
+                dt = timestamp
+
+            if period == "week":
+                iso = dt.isocalendar()
+                key = (int(iso.year), int(iso.week))
+            else:
+                key = (int(dt.year), int(dt.month))
+
+            buckets[key] = close
+
+        return list(buckets.values())
+
+    @classmethod
+    def _momentum(
+        cls,
+        closes: list[float],
+        lookback: int,
+    ) -> float | None:
+        if len(closes) <= lookback:
+            return None
+        base = closes[-1 - lookback]
+        if base == 0:
+            return None
+        return (closes[-1] / base - 1) * 100
 
     @staticmethod
     def _statement_value(statement, labels: tuple[str, ...]) -> float | None:
@@ -279,13 +339,31 @@ class MarketSnapshotService:
             if len(closes) >= 200:
                 row.sma200 = sum(closes[-200:]) / 200
 
+            # Reset technical fields before recalculating so a shorter or
+            # incomplete provider response cannot leave stale indicators.
+            row.sma50 = None
+            row.sma200 = None
+            row.rsi14 = None
+            row.rsi_weekly = None
+            row.rsi_monthly = None
+            row.momentum_3m = None
+            row.momentum_6m = None
+
+            if len(closes) >= 50:
+                row.sma50 = sum(closes[-50:]) / 50
+            if len(closes) >= 200:
+                row.sma200 = sum(closes[-200:]) / 200
+
             row.rsi14 = self._rsi(closes)
 
-            if len(closes) >= 2:
-                lookback = min(126, len(closes) - 1)
-                row.momentum_6m = (
-                    closes[-1] / closes[-1 - lookback] - 1
-                ) * 100
+            weekly_closes = self._periodic_closes(history, "week")
+            monthly_closes = self._periodic_closes(history, "month")
+
+            row.rsi_weekly = self._rsi(weekly_closes)
+            row.rsi_monthly = self._rsi(monthly_closes)
+
+            row.momentum_3m = self._momentum(closes, 63)
+            row.momentum_6m = self._momentum(closes, 126)
 
             if row.roe is None or row.roce is None:
                 row.status = "partial"
