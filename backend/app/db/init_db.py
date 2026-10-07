@@ -1,3 +1,4 @@
+from sqlalchemy import inspect, text
 from sqlalchemy.orm import Session
 
 from app.db.database import Base, SessionLocal, engine
@@ -22,8 +23,51 @@ INITIAL_STOCKS = [
 ]
 
 
+def _ensure_columns(table: str, columns: dict[str, str]) -> None:
+    inspector = inspect(engine)
+    existing = {column["name"] for column in inspector.get_columns(table)}
+
+    missing = [
+        (name, definition)
+        for name, definition in columns.items()
+        if name not in existing
+    ]
+
+    if not missing:
+        return
+
+    with engine.begin() as connection:
+        for name, definition in missing:
+            connection.execute(
+                text(
+                    f'ALTER TABLE "{table}" '
+                    f'ADD COLUMN "{name}" {definition}'
+                )
+            )
+
+
 def initialize_database() -> None:
     Base.metadata.create_all(bind=engine)
+
+    # create_all() does not add new columns to an existing SQLite database.
+    # Keep the lightweight application startup migration in sync with the
+    # technical-indicator models so existing deployments are upgraded safely.
+    _ensure_columns(
+        "market_snapshots",
+        {
+            "rsi_weekly": "FLOAT",
+            "rsi_monthly": "FLOAT",
+            "momentum_3m": "FLOAT",
+        },
+    )
+    _ensure_columns(
+        "screener_snapshots",
+        {
+            "rsi_weekly": "FLOAT",
+            "rsi_monthly": "FLOAT",
+            "momentum_3m": "FLOAT",
+        },
+    )
 
     db: Session = SessionLocal()
     try:
