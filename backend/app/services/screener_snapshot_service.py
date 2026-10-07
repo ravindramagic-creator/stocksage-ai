@@ -308,6 +308,12 @@ class ScreenerSnapshotService:
                 )
             )
 
+        technical_rows = [
+            technical_row
+            for _, technical_row in rows
+            if technical_row is not None and technical_row.updated_at is not None
+        ]
+
         snapshot_at = (
             technical_rows[0].updated_at
             if technical_rows
