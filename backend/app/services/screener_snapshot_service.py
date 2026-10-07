@@ -153,18 +153,34 @@ class ScreenerSnapshotService:
             or 0
         )
 
-        # Push the screener filters into SQL instead of loading the entire
-        # snapshot table and filtering thousands of rows in Python on every
-        # page request.
-        market_cap_floor = (
-            filters.min_market_cap * 10_000_000
-        )
-
         # Technical indicators can be refreshed more frequently than the
         # persisted ranking snapshot. Prefer the latest MarketSnapshot values
         # for the configurable technical gate, falling back to the persisted
         # screener snapshot when necessary.
         technical = MarketSnapshot
+
+        live_price = func.coalesce(technical.price, ScreenerSnapshot.price)
+        live_sma50 = func.coalesce(technical.sma50, ScreenerSnapshot.sma50)
+        live_sma200 = func.coalesce(technical.sma200, ScreenerSnapshot.sma200)
+        live_daily_rsi = func.coalesce(technical.rsi14, ScreenerSnapshot.rsi14)
+        live_weekly_rsi = func.coalesce(
+            technical.rsi_weekly,
+            ScreenerSnapshot.rsi_weekly,
+        )
+        live_monthly_rsi = func.coalesce(
+            technical.rsi_monthly,
+            ScreenerSnapshot.rsi_monthly,
+        )
+        live_momentum_3m = func.coalesce(
+            technical.momentum_3m,
+            ScreenerSnapshot.momentum_3m,
+        )
+        live_momentum_6m = func.coalesce(
+            technical.momentum_6m,
+            ScreenerSnapshot.momentum_6m,
+        )
+
+        market_cap_floor = filters.min_market_cap * 10_000_000
 
         query = (
             select(ScreenerSnapshot, technical)
@@ -179,80 +195,34 @@ class ScreenerSnapshotService:
                 ScreenerSnapshot.roce.is_not(None),
                 ScreenerSnapshot.pe.is_not(None),
                 ScreenerSnapshot.pe > 0,
-                ScreenerSnapshot.price.is_not(None),
-                ScreenerSnapshot.sma50.is_not(None),
-                ScreenerSnapshot.sma200.is_not(None),
-                func.coalesce(
-                    technical.rsi14,
-                    ScreenerSnapshot.rsi14,
-                ).is_not(None),
-                func.coalesce(
-                    technical.rsi_weekly,
-                    ScreenerSnapshot.rsi_weekly,
-                ).is_not(None),
-                func.coalesce(
-                    technical.rsi_monthly,
-                    ScreenerSnapshot.rsi_monthly,
-                ).is_not(None),
-                func.coalesce(
-                    technical.momentum_3m,
-                    ScreenerSnapshot.momentum_3m,
-                ).is_not(None),
-                func.coalesce(
-                    technical.momentum_6m,
-                    ScreenerSnapshot.momentum_6m,
-                ).is_not(None),
+                live_price.is_not(None),
+                live_sma50.is_not(None),
+                live_sma200.is_not(None),
+                live_daily_rsi.is_not(None),
+                live_weekly_rsi.is_not(None),
+                live_monthly_rsi.is_not(None),
+                live_momentum_3m.is_not(None),
+                live_momentum_6m.is_not(None),
                 ScreenerSnapshot.roe >= filters.min_roe,
                 ScreenerSnapshot.pe <= filters.max_pe,
-                func.coalesce(
-                    technical.rsi14,
-                    ScreenerSnapshot.rsi14,
-                ) > filters.min_daily_rsi,
-                func.coalesce(
-                    technical.rsi_weekly,
-                    ScreenerSnapshot.rsi_weekly,
-                ) > filters.min_weekly_rsi,
-                func.coalesce(
-                    technical.rsi_monthly,
-                    ScreenerSnapshot.rsi_monthly,
-                ) > filters.min_monthly_rsi,
-                func.coalesce(
-                    technical.price,
-                    ScreenerSnapshot.price,
-                ) > func.coalesce(
-                    technical.sma50,
-                    ScreenerSnapshot.sma50,
-                ),
-                func.coalesce(
-                    technical.sma50,
-                    ScreenerSnapshot.sma50,
-                ) > func.coalesce(
-                    technical.sma200,
-                    ScreenerSnapshot.sma200,
-                ),
-                func.coalesce(
-                    technical.momentum_3m,
-                    ScreenerSnapshot.momentum_3m,
-                ) > filters.min_momentum_3m,
-                func.coalesce(
-                    technical.momentum_6m,
-                    ScreenerSnapshot.momentum_6m,
-                ) > filters.min_momentum_6m,
+                live_daily_rsi > filters.min_daily_rsi,
+                live_weekly_rsi > filters.min_weekly_rsi,
+                live_monthly_rsi > filters.min_monthly_rsi,
+                live_price > live_sma50,
+                live_sma50 > live_sma200,
+                live_momentum_3m > filters.min_momentum_3m,
+                live_momentum_6m > filters.min_momentum_6m,
                 ScreenerSnapshot.revenue_growth.is_not(None),
-                ScreenerSnapshot.revenue_growth
-                >= filters.min_revenue_growth,
+                ScreenerSnapshot.revenue_growth >= filters.min_revenue_growth,
                 ScreenerSnapshot.profit_growth.is_not(None),
-                ScreenerSnapshot.profit_growth
-                >= filters.min_profit_growth,
+                ScreenerSnapshot.profit_growth >= filters.min_profit_growth,
                 or_(
                     ScreenerSnapshot.debt_to_equity.is_(None),
-                    ScreenerSnapshot.debt_to_equity
-                    <= filters.max_debt_to_equity,
+                    ScreenerSnapshot.debt_to_equity <= filters.max_debt_to_equity,
                 ),
                 or_(
                     ScreenerSnapshot.market_cap.is_(None),
-                    ScreenerSnapshot.market_cap
-                    >= market_cap_floor,
+                    ScreenerSnapshot.market_cap >= market_cap_floor,
                 ),
             )
             .order_by(
@@ -263,13 +233,11 @@ class ScreenerSnapshotService:
             .limit(filters.limit)
         )
 
-        rows = self.db.execute(
-            query
-        ).scalars().all()
+        rows = self.db.execute(query).all()
 
         results: list[ScreenerResult] = []
 
-        for row in rows:
+        for row, technical_row in rows:
             peg = row.peg
 
             results.append(
@@ -340,20 +308,12 @@ class ScreenerSnapshotService:
                 )
             )
 
-        technical_rows = [
-            technical_row
-            for _, technical_row in rows
-            if technical_row is not None and technical_row.updated_at is not None
-        ]
-
         snapshot_at = (
-            (
-                technical_rows[0].updated_at
-                if technical_rows
-                else rows[0].snapshot_at
-                if rows
-                else None
-            )
+            technical_rows[0].updated_at
+            if technical_rows
+            else rows[0][0].snapshot_at
+            if rows
+            else None
         )
 
         return (
