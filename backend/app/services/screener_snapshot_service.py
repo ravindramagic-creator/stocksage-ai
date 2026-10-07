@@ -190,7 +190,11 @@ class ScreenerSnapshotService:
             )
             .where(
                 ScreenerSnapshot.score >= filters.min_score,
-                ScreenerSnapshot.data_completeness >= 75,
+                # Legacy snapshot completeness can be lower because the new
+                # multi-timeframe technical fields did not exist when older
+                # rows were written. The required core fields are checked
+                # explicitly below, so do not reject valid live technical data
+                # based on the old aggregate percentage.
                 ScreenerSnapshot.roe.is_not(None),
                 ScreenerSnapshot.roce.is_not(None),
                 ScreenerSnapshot.pe.is_not(None),
