@@ -160,8 +160,18 @@ class ScreenerSnapshotService:
             filters.min_market_cap * 10_000_000
         )
 
+        # Technical indicators can be refreshed more frequently than the
+        # persisted ranking snapshot. Prefer the latest MarketSnapshot values
+        # for the configurable technical gate, falling back to the persisted
+        # screener snapshot when necessary.
+        technical = MarketSnapshot
+
         query = (
-            select(ScreenerSnapshot)
+            select(ScreenerSnapshot, technical)
+            .outerjoin(
+                technical,
+                technical.symbol == ScreenerSnapshot.symbol,
+            )
             .where(
                 ScreenerSnapshot.score >= filters.min_score,
                 ScreenerSnapshot.data_completeness >= 75,
@@ -172,20 +182,62 @@ class ScreenerSnapshotService:
                 ScreenerSnapshot.price.is_not(None),
                 ScreenerSnapshot.sma50.is_not(None),
                 ScreenerSnapshot.sma200.is_not(None),
-                ScreenerSnapshot.rsi14.is_not(None),
-                ScreenerSnapshot.rsi_weekly.is_not(None),
-                ScreenerSnapshot.rsi_monthly.is_not(None),
-                ScreenerSnapshot.momentum_3m.is_not(None),
-                ScreenerSnapshot.momentum_6m.is_not(None),
+                func.coalesce(
+                    technical.rsi14,
+                    ScreenerSnapshot.rsi14,
+                ).is_not(None),
+                func.coalesce(
+                    technical.rsi_weekly,
+                    ScreenerSnapshot.rsi_weekly,
+                ).is_not(None),
+                func.coalesce(
+                    technical.rsi_monthly,
+                    ScreenerSnapshot.rsi_monthly,
+                ).is_not(None),
+                func.coalesce(
+                    technical.momentum_3m,
+                    ScreenerSnapshot.momentum_3m,
+                ).is_not(None),
+                func.coalesce(
+                    technical.momentum_6m,
+                    ScreenerSnapshot.momentum_6m,
+                ).is_not(None),
                 ScreenerSnapshot.roe >= filters.min_roe,
                 ScreenerSnapshot.pe <= filters.max_pe,
-                ScreenerSnapshot.rsi14 > filters.min_daily_rsi,
-                ScreenerSnapshot.rsi_weekly > filters.min_weekly_rsi,
-                ScreenerSnapshot.rsi_monthly > filters.min_monthly_rsi,
-                ScreenerSnapshot.price > ScreenerSnapshot.sma50,
-                ScreenerSnapshot.sma50 > ScreenerSnapshot.sma200,
-                ScreenerSnapshot.momentum_3m > filters.min_momentum_3m,
-                ScreenerSnapshot.momentum_6m > filters.min_momentum_6m,
+                func.coalesce(
+                    technical.rsi14,
+                    ScreenerSnapshot.rsi14,
+                ) > filters.min_daily_rsi,
+                func.coalesce(
+                    technical.rsi_weekly,
+                    ScreenerSnapshot.rsi_weekly,
+                ) > filters.min_weekly_rsi,
+                func.coalesce(
+                    technical.rsi_monthly,
+                    ScreenerSnapshot.rsi_monthly,
+                ) > filters.min_monthly_rsi,
+                func.coalesce(
+                    technical.price,
+                    ScreenerSnapshot.price,
+                ) > func.coalesce(
+                    technical.sma50,
+                    ScreenerSnapshot.sma50,
+                ),
+                func.coalesce(
+                    technical.sma50,
+                    ScreenerSnapshot.sma50,
+                ) > func.coalesce(
+                    technical.sma200,
+                    ScreenerSnapshot.sma200,
+                ),
+                func.coalesce(
+                    technical.momentum_3m,
+                    ScreenerSnapshot.momentum_3m,
+                ) > filters.min_momentum_3m,
+                func.coalesce(
+                    technical.momentum_6m,
+                    ScreenerSnapshot.momentum_6m,
+                ) > filters.min_momentum_6m,
                 ScreenerSnapshot.revenue_growth.is_not(None),
                 ScreenerSnapshot.revenue_growth
                 >= filters.min_revenue_growth,
@@ -229,7 +281,11 @@ class ScreenerSnapshotService:
                     score=row.score,
                     verdict=row.verdict,
                     data_completeness=row.data_completeness,
-                    price=row.price,
+                    price=(
+                        technical_row.price
+                        if technical_row and technical_row.price is not None
+                        else row.price
+                    ),
                     market_cap=row.market_cap,
                     pe=row.pe,
                     peg=peg,
@@ -240,13 +296,41 @@ class ScreenerSnapshotService:
                     revenue_growth=row.revenue_growth,
                     profit_growth=row.profit_growth,
                     eps_growth=row.eps_growth,
-                    sma50=row.sma50,
-                    sma200=row.sma200,
-                    rsi14=row.rsi14,
-                    rsi_weekly=row.rsi_weekly,
-                    rsi_monthly=row.rsi_monthly,
-                    momentum_3m=row.momentum_3m,
-                    momentum_6m=row.momentum_6m,
+                    sma50=(
+                        technical_row.sma50
+                        if technical_row and technical_row.sma50 is not None
+                        else row.sma50
+                    ),
+                    sma200=(
+                        technical_row.sma200
+                        if technical_row and technical_row.sma200 is not None
+                        else row.sma200
+                    ),
+                    rsi14=(
+                        technical_row.rsi14
+                        if technical_row and technical_row.rsi14 is not None
+                        else row.rsi14
+                    ),
+                    rsi_weekly=(
+                        technical_row.rsi_weekly
+                        if technical_row and technical_row.rsi_weekly is not None
+                        else row.rsi_weekly
+                    ),
+                    rsi_monthly=(
+                        technical_row.rsi_monthly
+                        if technical_row and technical_row.rsi_monthly is not None
+                        else row.rsi_monthly
+                    ),
+                    momentum_3m=(
+                        technical_row.momentum_3m
+                        if technical_row and technical_row.momentum_3m is not None
+                        else row.momentum_3m
+                    ),
+                    momentum_6m=(
+                        technical_row.momentum_6m
+                        if technical_row and technical_row.momentum_6m is not None
+                        else row.momentum_6m
+                    ),
                     target_upside=row.target_upside,
                     analyst_beat_rate=row.analyst_beat_rate,
                     fundamental_score=row.fundamental_score,
@@ -256,10 +340,20 @@ class ScreenerSnapshotService:
                 )
             )
 
+        technical_rows = [
+            technical_row
+            for _, technical_row in rows
+            if technical_row is not None and technical_row.updated_at is not None
+        ]
+
         snapshot_at = (
-            rows[0].snapshot_at
-            if rows
-            else None
+            (
+                technical_rows[0].updated_at
+                if technical_rows
+                else rows[0].snapshot_at
+                if rows
+                else None
+            )
         )
 
         return (
