@@ -140,6 +140,7 @@ class ScreenerSnapshotService:
     def get_results(
         self,
         filters: ScreenerFilters,
+        mode: str = "combined",
     ) -> tuple[
         int,
         list[ScreenerResult],
@@ -182,92 +183,42 @@ class ScreenerSnapshotService:
         )
 
         market_cap_floor = filters.min_market_cap * 10_000_000
+        mode = mode.lower()
+        if mode not in {"combined", "fundamental", "technical"}:
+            raise ValueError("mode must be combined, fundamental, or technical")
 
-        query = (
-            select(ScreenerSnapshot, technical)
-            .outerjoin(
-                technical,
-                technical.symbol == ScreenerSnapshot.symbol,
-            )
-            .where(
-                ScreenerSnapshot.score >= filters.min_score,
-                # Legacy snapshot completeness can be lower because the new
-                # multi-timeframe technical fields did not exist when older
-                # rows were written. The required core fields are checked
-                # explicitly below, so do not reject valid live technical data
-                # based on the old aggregate percentage.
-                ScreenerSnapshot.roe.is_not(None),
-                ScreenerSnapshot.roce.is_not(None),
-                ScreenerSnapshot.pe.is_not(None),
-                ScreenerSnapshot.pe > 0,
-                live_price.is_not(None),
-                live_sma50.is_not(None),
-                live_sma200.is_not(None),
-                live_daily_rsi.is_not(None),
-                live_weekly_rsi.is_not(None),
-                live_monthly_rsi.is_not(None),
-                live_momentum_3m.is_not(None),
-                live_momentum_6m.is_not(None),
-                ScreenerSnapshot.roe >= filters.min_roe,
-                ScreenerSnapshot.pe <= filters.max_pe,
-                live_daily_rsi > filters.min_daily_rsi,
-                live_weekly_rsi > filters.min_weekly_rsi,
-                live_monthly_rsi > filters.min_monthly_rsi,
-                live_price > live_sma50,
-                live_sma50 > live_sma200,
-                live_momentum_3m > filters.min_momentum_3m,
-                live_momentum_6m > filters.min_momentum_6m,
-                ScreenerSnapshot.revenue_growth.is_not(None),
-                ScreenerSnapshot.revenue_growth >= filters.min_revenue_growth,
-                ScreenerSnapshot.profit_growth.is_not(None),
-                ScreenerSnapshot.profit_growth >= filters.min_profit_growth,
-                or_(
-                    ScreenerSnapshot.debt_to_equity.is_(None),
-                    ScreenerSnapshot.debt_to_equity <= filters.max_debt_to_equity,
-                ),
-                or_(
-                    ScreenerSnapshot.market_cap.is_(None),
-                    ScreenerSnapshot.market_cap >= market_cap_floor,
-                ),
-            )
-            .order_by(
-                ScreenerSnapshot.score.desc(),
-                ScreenerSnapshot.data_completeness.desc(),
-                ScreenerSnapshot.symbol.asc(),
-            )
-            .limit(filters.limit)
+        technical = MarketSnapshot
+
+        live_price = func.coalesce(technical.price, ScreenerSnapshot.price)
+        live_sma50 = func.coalesce(technical.sma50, ScreenerSnapshot.sma50)
+        live_sma200 = func.coalesce(technical.sma200, ScreenerSnapshot.sma200)
+        live_daily_rsi = func.coalesce(technical.rsi14, ScreenerSnapshot.rsi14)
+        live_weekly_rsi = func.coalesce(
+            technical.rsi_weekly,
+            ScreenerSnapshot.rsi_weekly,
+        )
+        live_monthly_rsi = func.coalesce(
+            technical.rsi_monthly,
+            ScreenerSnapshot.rsi_monthly,
+        )
+        live_momentum_3m = func.coalesce(
+            technical.momentum_3m,
+            ScreenerSnapshot.momentum_3m,
+        )
+        live_momentum_6m = func.coalesce(
+            technical.momentum_6m,
+            ScreenerSnapshot.momentum_6m,
         )
 
-        rows = self.db.execute(query).all()
-        fallback_mode = False
+        conditions = []
 
-        # The strict screen can legitimately return zero stocks when all
-        # multi-timeframe technical gates are enabled at once. Do not leave the
-        # UI empty in that case. Return the closest candidates that still meet
-        # the core fundamental/valuation filters, and label them as NEAR MATCH
-        # below. This keeps the strict filters intact while giving the user
-        # something actionable to inspect.
-        if not rows:
-            fallback_query = (
-                select(ScreenerSnapshot, technical)
-                .outerjoin(
-                    technical,
-                    technical.symbol == ScreenerSnapshot.symbol,
-                )
-                .where(
-                    ScreenerSnapshot.score >= filters.min_score,
+        if mode in {"combined", "fundamental"}:
+            conditions.extend(
+                [
                     ScreenerSnapshot.roe.is_not(None),
                     ScreenerSnapshot.roce.is_not(None),
                     ScreenerSnapshot.pe.is_not(None),
                     ScreenerSnapshot.pe > 0,
-                    live_price.is_not(None),
-                    live_sma50.is_not(None),
-                    live_sma200.is_not(None),
-                    live_daily_rsi.is_not(None),
-                    live_weekly_rsi.is_not(None),
-                    live_monthly_rsi.is_not(None),
-                    live_momentum_3m.is_not(None),
-                    live_momentum_6m.is_not(None),
                     ScreenerSnapshot.roe >= filters.min_roe,
                     ScreenerSnapshot.pe <= filters.max_pe,
                     ScreenerSnapshot.revenue_growth.is_not(None),
@@ -282,7 +233,98 @@ class ScreenerSnapshotService:
                         ScreenerSnapshot.market_cap.is_(None),
                         ScreenerSnapshot.market_cap >= market_cap_floor,
                     ),
+                ]
+            )
+
+        if mode in {"combined", "technical"}:
+            conditions.extend(
+                [
+                    live_price.is_not(None),
+                    live_sma50.is_not(None),
+                    live_sma200.is_not(None),
+                    live_daily_rsi.is_not(None),
+                    live_weekly_rsi.is_not(None),
+                    live_monthly_rsi.is_not(None),
+                    live_momentum_3m.is_not(None),
+                    live_momentum_6m.is_not(None),
+                    live_daily_rsi > filters.min_daily_rsi,
+                    live_weekly_rsi > filters.min_weekly_rsi,
+                    live_monthly_rsi > filters.min_monthly_rsi,
+                    live_price > live_sma50,
+                    live_sma50 > live_sma200,
+                    live_momentum_3m > filters.min_momentum_3m,
+                    live_momentum_6m > filters.min_momentum_6m,
+                ]
+            )
+
+        score_column = (
+            ScreenerSnapshot.technical_score
+            if mode == "technical"
+            else ScreenerSnapshot.fundamental_score
+            if mode == "fundamental"
+            else ScreenerSnapshot.score
+        )
+
+        conditions.insert(0, score_column.is_not(None))
+        conditions.insert(0, score_column >= filters.min_score)
+
+        query = (
+            select(ScreenerSnapshot, technical)
+            .outerjoin(
+                technical,
+                technical.symbol == ScreenerSnapshot.symbol,
+            )
+            .where(*conditions)
+            .order_by(
+                score_column.desc(),
+                ScreenerSnapshot.data_completeness.desc(),
+                ScreenerSnapshot.symbol.asc(),
+            )
+            .limit(filters.limit)
+        )
+
+        rows = self.db.execute(query).all()
+
+        # Do not mix the two analyses. Fundamental mode uses only fundamental
+        # quality/valuation/earnings filters; technical mode uses only price,
+        # trend, RSI and momentum filters.
+        if not rows and mode == "combined":
+            fallback_conditions = [
+                ScreenerSnapshot.score >= filters.min_score,
+                ScreenerSnapshot.roe.is_not(None),
+                ScreenerSnapshot.roce.is_not(None),
+                ScreenerSnapshot.pe.is_not(None),
+                ScreenerSnapshot.pe > 0,
+                live_price.is_not(None),
+                live_sma50.is_not(None),
+                live_sma200.is_not(None),
+                live_daily_rsi.is_not(None),
+                live_weekly_rsi.is_not(None),
+                live_monthly_rsi.is_not(None),
+                live_momentum_3m.is_not(None),
+                live_momentum_6m.is_not(None),
+                ScreenerSnapshot.roe >= filters.min_roe,
+                ScreenerSnapshot.pe <= filters.max_pe,
+                ScreenerSnapshot.revenue_growth.is_not(None),
+                ScreenerSnapshot.revenue_growth >= filters.min_revenue_growth,
+                ScreenerSnapshot.profit_growth.is_not(None),
+                ScreenerSnapshot.profit_growth >= filters.min_profit_growth,
+                or_(
+                    ScreenerSnapshot.debt_to_equity.is_(None),
+                    ScreenerSnapshot.debt_to_equity <= filters.max_debt_to_equity,
+                ),
+                or_(
+                    ScreenerSnapshot.market_cap.is_(None),
+                    ScreenerSnapshot.market_cap >= market_cap_floor,
+                ),
+            ]
+            fallback_query = (
+                select(ScreenerSnapshot, technical)
+                .outerjoin(
+                    technical,
+                    technical.symbol == ScreenerSnapshot.symbol,
                 )
+                .where(*fallback_conditions)
                 .order_by(
                     ScreenerSnapshot.score.desc(),
                     ScreenerSnapshot.data_completeness.desc(),
@@ -291,12 +333,31 @@ class ScreenerSnapshotService:
                 .limit(filters.limit)
             )
             rows = self.db.execute(fallback_query).all()
-            fallback_mode = bool(rows)
 
         results: list[ScreenerResult] = []
 
         for row, technical_row in rows:
-            peg = row.peg
+            if mode == "technical":
+                display_score = row.technical_score or 0
+                display_verdict = (
+                    "STRONG TECHNICAL"
+                    if display_score >= 85
+                    else "TECHNICAL BUY"
+                    if display_score >= 70
+                    else "TECHNICAL WATCH"
+                )
+            elif mode == "fundamental":
+                display_score = row.fundamental_score or 0
+                display_verdict = (
+                    "STRONG FUNDAMENTAL"
+                    if display_score >= 85
+                    else "FUNDAMENTAL BUY"
+                    if display_score >= 70
+                    else "FUNDAMENTAL WATCH"
+                )
+            else:
+                display_score = row.score
+                display_verdict = row.verdict
 
             results.append(
                 ScreenerResult(
@@ -304,8 +365,8 @@ class ScreenerSnapshotService:
                     symbol=row.symbol,
                     company_name=row.company_name,
                     sector=row.sector,
-                    score=row.score,
-                    verdict="NEAR MATCH" if fallback_mode else row.verdict,
+                    score=display_score,
+                    verdict=display_verdict,
                     data_completeness=row.data_completeness,
                     price=(
                         technical_row.price
@@ -314,7 +375,7 @@ class ScreenerSnapshotService:
                     ),
                     market_cap=row.market_cap,
                     pe=row.pe,
-                    peg=peg,
+                    peg=row.peg,
                     pb=row.pb,
                     roe=row.roe,
                     roce=row.roce,
