@@ -39,7 +39,7 @@ function Metric({
 function DetailRow({ stock }: { stock: ScreenerResult }) {
   return (
     <tr className="bg-slate-950/60">
-      <td colSpan={9} className="px-4 pb-5 pt-2">
+      <td colSpan={12} className="px-4 pb-5 pt-2">
         <div className="grid grid-cols-2 gap-4 rounded-lg border border-slate-800 bg-slate-950 p-4 md:grid-cols-6">
           <Metric label="Fundamental" value={fmt(stock.fundamental_score, 0)} />
           <Metric label="Valuation" value={fmt(stock.valuation_score, 0)} />
@@ -52,7 +52,13 @@ function DetailRow({ stock }: { stock: ScreenerResult }) {
           <Metric label="P/B" value={fmt(stock.pb, 2)} />
           <Metric label="50 DMA" value={fmt(stock.sma50, 0)} />
           <Metric label="200 DMA" value={fmt(stock.sma200, 0)} />
-          <Metric label="RSI-14" value={fmt(stock.rsi14, 1)} />
+          <Metric label="Daily RSI-14" value={fmt(stock.rsi14, 1)} />
+          <Metric label="Weekly RSI-14" value={fmt(stock.rsi_weekly, 1)} />
+          <Metric label="Monthly RSI-14" value={fmt(stock.rsi_monthly, 1)} />
+          <Metric
+            label="3M Momentum"
+            value={`${fmt(stock.momentum_3m)}%`}
+          />
           <Metric
             label="6M Momentum"
             value={`${fmt(stock.momentum_6m)}%`}
@@ -136,7 +142,7 @@ export function BestStocksScreener() {
             AI Best Stocks
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Full NSE universe · Fundamental 50% · Valuation 20% · Technical 20% · Analyst 10%
+            Full NSE universe · Daily/Weekly/Monthly RSI &gt; 60 · Price &gt; 50-DMA · 50-DMA &gt; 200-DMA · 3M/6M momentum &gt; 0
           </p>
         </div>
 
@@ -241,7 +247,10 @@ export function BestStocksScreener() {
                   <th className="px-3 py-3">PE</th>
                   <th className="px-3 py-3">ROE</th>
                   <th className="px-3 py-3">ROCE</th>
-                  <th className="px-3 py-3">RSI</th>
+                  <th className="px-3 py-3">D RSI</th>
+                  <th className="px-3 py-3">W RSI</th>
+                  <th className="px-3 py-3">M RSI</th>
+                  <th className="px-3 py-3">3M</th>
                   <th className="px-3 py-3">6M</th>
                   <th className="px-3 py-3">Verdict</th>
                 </tr>
@@ -294,6 +303,15 @@ export function BestStocksScreener() {
                       </td>
                       <td className="px-3 py-3">
                         {fmt(stock.rsi14)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(stock.rsi_weekly)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(stock.rsi_monthly)}
+                      </td>
+                      <td className="px-3 py-3">
+                        {fmt(stock.momentum_3m)}%
                       </td>
                       <td className="px-3 py-3">
                         {fmt(stock.momentum_6m)}%
