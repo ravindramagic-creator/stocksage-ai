@@ -309,25 +309,66 @@ export function BestStocksScreener() {
           </p>
 
           <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-6">
-            {[
-              ["Min score", fundamentalScore, setFundamentalScore, ""],
-              ["Min ROE %", minRoe, setMinRoe, ""],
-              ["Max PE", maxPe, setMaxPe, ""],
-              ["Max D/E", maxDebt, setMaxDebt, "0.1"],
-              ["Min revenue %", minRevenueGrowth, setMinRevenueGrowth, ""],
-              ["Min PAT %", minProfitGrowth, setMinProfitGrowth, ""],
-            ].map(([label, value, setter, step]) => (
-              <label key={String(label)} className="text-xs text-slate-500">
-                {label}
-                <input
-                  className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
-                  type="number"
-                  step={String(step) || undefined}
-                  value={Number(value)}
-                  onChange={(e) => (setter as (v: number) => void)(Number(e.target.value))}
-                />
-              </label>
-            ))}
+            <label className="text-xs text-slate-500">
+              Min score
+              <input
+                className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+                type="number"
+                value={fundamentalScore}
+                onChange={(e) => setFundamentalScore(Number(e.target.value))}
+              />
+            </label>
+
+            <label className="text-xs text-slate-500">
+              Min ROE %
+              <input
+                className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+                type="number"
+                value={minRoe}
+                onChange={(e) => setMinRoe(Number(e.target.value))}
+              />
+            </label>
+
+            <label className="text-xs text-slate-500">
+              Max PE
+              <input
+                className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+                type="number"
+                value={maxPe}
+                onChange={(e) => setMaxPe(Number(e.target.value))}
+              />
+            </label>
+
+            <label className="text-xs text-slate-500">
+              Max D/E
+              <input
+                className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+                type="number"
+                step="0.1"
+                value={maxDebt}
+                onChange={(e) => setMaxDebt(Number(e.target.value))}
+              />
+            </label>
+
+            <label className="text-xs text-slate-500">
+              Min revenue %
+              <input
+                className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+                type="number"
+                value={minRevenueGrowth}
+                onChange={(e) => setMinRevenueGrowth(Number(e.target.value))}
+              />
+            </label>
+
+            <label className="text-xs text-slate-500">
+              Min PAT %
+              <input
+                className="mt-1 w-full rounded bg-slate-900 px-2 py-2 text-white"
+                type="number"
+                value={minProfitGrowth}
+                onChange={(e) => setMinProfitGrowth(Number(e.target.value))}
+              />
+            </label>
           </div>
 
           <button
