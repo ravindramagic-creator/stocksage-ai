@@ -8,7 +8,7 @@ from app.services.screener_snapshot_service import ScreenerSnapshotService
 
 logger = logging.getLogger("stocksage.screener_worker")
 
-SCREENER_REFRESH_SECONDS = 15 * 60
+SCREENER_REFRESH_SECONDS = 5 * 60
 
 
 def _run_screener_refresh_sync() -> None:
@@ -43,7 +43,7 @@ async def screener_worker() -> None:
     )
 
     # Do not compete with the initial page load for CPU/database resources.
-    await asyncio.sleep(20)
+    await asyncio.sleep(75)
     await run_screener_refresh()
 
     while True:
