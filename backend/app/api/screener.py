@@ -32,6 +32,12 @@ def _filters(
         min_profit_growth=min_profit_growth,
         min_market_cap=min_market_cap,
         limit=limit,
+        min_daily_rsi=min_daily_rsi,
+        min_weekly_rsi=min_weekly_rsi,
+        min_monthly_rsi=min_monthly_rsi,
+        min_momentum_3m=min_momentum_3m,
+        min_momentum_6m=min_momentum_6m,
+        strict_technical=True,
         # Retained for backwards-compatible request models. The HTTP request no
         # longer uses this to trigger a full-universe calculation.
         universe_limit=5000,
