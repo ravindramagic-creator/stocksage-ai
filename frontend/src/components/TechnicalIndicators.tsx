@@ -65,7 +65,8 @@ function rsi(values: number[], period = 14): number[] {
 
   let avgGain = gains / period;
   let avgLoss = losses / period;
-  result[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+  result[period] =
+    avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
 
   for (let i = period + 1; i < values.length; i += 1) {
     const change = values[i] - values[i - 1];
@@ -73,8 +74,10 @@ function rsi(values: number[], period = 14): number[] {
     const loss = Math.max(-change, 0);
     avgGain = (avgGain * (period - 1) + gain) / period;
     avgLoss = (avgLoss * (period - 1) + loss) / period;
-    result[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    result[i] =
+      avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
   }
+
   return result;
 }
 
@@ -92,18 +95,58 @@ function rsiLabel(value: number | null) {
   return "Neutral momentum";
 }
 
+function buildRsiData(
+  points: Array<{ timestamp: string; close: number | null; volume: number | null }>,
+  maxPoints: number,
+): IndicatorPoint[] {
+  const cleanPoints = points
+    .filter((point) => point.close !== null)
+    .map((point) => ({
+      timestamp: point.timestamp,
+      close: Number(point.close),
+      volume: Number(point.volume ?? 0),
+    }));
+
+  const closes = cleanPoints.map((point) => point.close);
+  const rsiValues = rsi(closes, 14);
+
+  return cleanPoints
+    .map((point, index) => ({
+      ...point,
+      rsi: Number.isFinite(rsiValues[index]) ? rsiValues[index] : null,
+    }))
+    .slice(-maxPoints);
+}
+
 export function TechnicalIndicators({ symbol }: Props) {
-  const { data, isLoading, isError } = useHistory(symbol, "1y", "1d");
+  const daily = useHistory(symbol, "1y", "1d");
+  const weekly = useHistory(symbol, "5y", "1wk");
+  const monthly = useHistory(symbol, "10y", "1mo");
 
-  if (isLoading) {
-    return <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-400">Loading technical indicators...</div>;
+  if (daily.isLoading || weekly.isLoading || monthly.isLoading) {
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
+        Loading technical indicators...
+      </div>
+    );
   }
 
-  if (isError || !data) {
-    return <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-red-400">Unable to load technical indicators.</div>;
+  if (
+    daily.isError ||
+    weekly.isError ||
+    monthly.isError ||
+    !daily.data ||
+    !weekly.data ||
+    !monthly.data
+  ) {
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-red-400">
+        Unable to load technical indicators.
+      </div>
+    );
   }
 
-  const points = data.points
+  const points = daily.data.points
     .filter((point) => point.close !== null)
     .map((point) => ({
       timestamp: point.timestamp,
@@ -112,7 +155,11 @@ export function TechnicalIndicators({ symbol }: Props) {
     }));
 
   if (points.length < 30) {
-    return <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-400">Not enough daily price history to calculate technical indicators.</div>;
+    return (
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 text-slate-400">
+        Not enough daily price history to calculate technical indicators.
+      </div>
+    );
   }
 
   const closes = points.map((point) => point.close);
@@ -124,7 +171,9 @@ export function TechnicalIndicators({ symbol }: Props) {
   const ema12 = ema(closes, 12);
   const ema26 = ema(closes, 26);
   const macd = closes.map((_, i) =>
-    Number.isFinite(ema12[i]) && Number.isFinite(ema26[i]) ? ema12[i] - ema26[i] : NaN,
+    Number.isFinite(ema12[i]) && Number.isFinite(ema26[i])
+      ? ema12[i] - ema26[i]
+      : NaN,
   );
   const macdSignal = ema(macd.filter(Number.isFinite), 9);
   const last = closes.length - 1;
@@ -136,46 +185,75 @@ export function TechnicalIndicators({ symbol }: Props) {
   const currentMacd = macd[last];
   const signalIndex = macd.filter(Number.isFinite).length - 1;
   const currentSignal = signalIndex >= 0 ? macdSignal[signalIndex] : NaN;
-  const avgVolume20 = volumes.slice(-20).reduce((sum, value) => sum + value, 0) / 20;
+  const avgVolume20 =
+    volumes.slice(-20).reduce((sum, value) => sum + value, 0) / 20;
   const volumeRatio = avgVolume20 > 0 ? volumes[last] / avgVolume20 : NaN;
 
   const recent = closes.slice(-20);
   const support = Math.min(...recent);
   const resistance = Math.max(...recent);
 
-  const chartData: IndicatorPoint[] = points.map((point, index) => ({
-    ...point,
-    rsi: Number.isFinite(rsiValues[index]) ? rsiValues[index] : null,
-  })).slice(-120);
+  const dailyRsiData = buildRsiData(daily.data.points, 120);
+  const weeklyRsiData = buildRsiData(weekly.data.points, 104);
+  const monthlyRsiData = buildRsiData(monthly.data.points, 120);
 
   const trend = Number.isFinite(currentSma200)
-    ? current > currentSma200 ? "Above 200-DMA" : "Below 200-DMA"
+    ? current > currentSma200
+      ? "Above 200-DMA"
+      : "Below 200-DMA"
     : Number.isFinite(currentSma50)
-      ? current > currentSma50 ? "Above 50-DMA" : "Below 50-DMA"
+      ? current > currentSma50
+        ? "Above 50-DMA"
+        : "Below 50-DMA"
       : "Trend unavailable";
 
-  const macdState = Number.isFinite(currentMacd) && Number.isFinite(currentSignal)
-    ? currentMacd > currentSignal ? "Bullish MACD momentum" : "Bearish MACD momentum"
-    : "MACD unavailable";
+  const macdState =
+    Number.isFinite(currentMacd) && Number.isFinite(currentSignal)
+      ? currentMacd > currentSignal
+        ? "Bullish MACD momentum"
+        : "Bearish MACD momentum"
+      : "MACD unavailable";
 
   return (
     <section className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold text-white">Technical Analysis</h2>
-          <p className="mt-1 text-sm text-slate-400">Daily data · RSI(14), moving averages, MACD and volume</p>
+          <h2 className="text-xl font-semibold text-white">
+            Technical Analysis
+          </h2>
+          <p className="mt-1 text-sm text-slate-400">
+            RSI(14), moving averages, MACD and volume
+          </p>
         </div>
         <div className="text-right">
-          <div className="text-xs uppercase tracking-wide text-slate-500">Trend</div>
+          <div className="text-xs uppercase tracking-wide text-slate-500">
+            Trend
+          </div>
           <div className="text-sm font-medium text-slate-200">{trend}</div>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <IndicatorCard title="RSI (14)" value={formatValue(currentRsi)} detail={rsiLabel(currentRsi)} />
-        <IndicatorCard title="MACD" value={formatValue(currentMacd)} detail={macdState} />
-        <IndicatorCard title="Volume vs 20D Avg" value={formatValue(volumeRatio, "x")} detail="Current / average volume" />
-        <IndicatorCard title="20D Support" value={`₹${support.toFixed(2)}`} detail={`Resistance ₹${resistance.toFixed(2)}`} />
+        <IndicatorCard
+          title="Daily RSI (14)"
+          value={formatValue(currentRsi)}
+          detail={rsiLabel(currentRsi)}
+        />
+        <IndicatorCard
+          title="MACD"
+          value={formatValue(currentMacd)}
+          detail={macdState}
+        />
+        <IndicatorCard
+          title="Volume vs 20D Avg"
+          value={formatValue(volumeRatio, "x")}
+          detail="Current / average volume"
+        />
+        <IndicatorCard
+          title="20D Support"
+          value={`₹${support.toFixed(2)}`}
+          detail={`Resistance ₹${resistance.toFixed(2)}`}
+        />
       </div>
 
       <div className="mt-6 grid gap-4 md:grid-cols-3">
@@ -184,55 +262,170 @@ export function TechnicalIndicators({ symbol }: Props) {
         <MovingAverage title="200-DMA" value={currentSma200} price={current} />
       </div>
 
-      <div className="mt-6 h-64 w-full">
-        <div className="mb-2 text-sm font-medium text-slate-300">RSI(14) — last 120 trading sessions</div>
+      <div className="mt-6">
+        <div className="mb-3 text-base font-semibold text-white">
+          RSI Multi-Timeframe
+        </div>
+        <div className="grid gap-5 lg:grid-cols-3">
+          <RsiChart
+            title="Daily RSI (14)"
+            subtitle="1 year · daily candles"
+            data={dailyRsiData}
+          />
+          <RsiChart
+            title="Weekly RSI (14)"
+            subtitle="5 years · weekly candles"
+            data={weeklyRsiData}
+          />
+          <RsiChart
+            title="Monthly RSI (14)"
+            subtitle="10 years · monthly candles"
+            data={monthlyRsiData}
+          />
+        </div>
+      </div>
+
+      <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-400">
+        RSI uses the standard 14-period Wilder calculation. Above 70 is
+        conventionally an overbought zone and below 30 an oversold zone.
+        Compare daily, weekly and monthly RSI together rather than using RSI
+        alone as a buy/sell signal.
+      </div>
+    </section>
+  );
+}
+
+function RsiChart({
+  title,
+  subtitle,
+  data,
+}: {
+  title: string;
+  subtitle: string;
+  data: IndicatorPoint[];
+}) {
+  const latest = [...data].reverse().find((point) => point.rsi !== null)?.rsi ?? null;
+
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/40 p-3">
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <div className="text-sm font-semibold text-slate-200">{title}</div>
+          <div className="text-xs text-slate-500">{subtitle}</div>
+        </div>
+        <div className="text-right">
+          <div className="text-xs text-slate-500">Current</div>
+          <div className="text-sm font-semibold text-white">
+            {formatValue(latest)}
+          </div>
+        </div>
+      </div>
+
+      <div className="h-56 w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
+          <LineChart data={data}>
             <CartesianGrid strokeDasharray="3 3" strokeOpacity={0.12} />
             <XAxis dataKey="timestamp" hide />
-            <YAxis domain={[0, 100]} ticks={[0, 30, 50, 70, 100]} tick={{ fontSize: 11 }} />
-            <ReferenceLine y={70} strokeDasharray="4 4" strokeOpacity={0.4} />
-            <ReferenceLine y={30} strokeDasharray="4 4" strokeOpacity={0.4} />
+            <YAxis
+              domain={[0, 100]}
+              ticks={[0, 30, 50, 70, 100]}
+              tick={{ fontSize: 10 }}
+              width={30}
+            />
+            <ReferenceLine
+              y={70}
+              strokeDasharray="4 4"
+              strokeOpacity={0.45}
+            />
+            <ReferenceLine
+              y={30}
+              strokeDasharray="4 4"
+              strokeOpacity={0.45}
+            />
+            <ReferenceLine
+              y={50}
+              strokeDasharray="2 4"
+              strokeOpacity={0.2}
+            />
             <Tooltip
               labelFormatter={(label: unknown) => {
-                if (typeof label !== "string" && typeof label !== "number") return "";
+                if (typeof label !== "string" && typeof label !== "number") {
+                  return "";
+                }
                 return new Date(label).toLocaleDateString("en-IN", {
                   day: "2-digit",
                   month: "short",
                   year: "numeric",
                 });
               }}
-              formatter={(value) => [formatValue(Number(value)), "RSI"]}
+              formatter={(value: number | string | undefined) => [
+                formatValue(Number(value)),
+                "RSI",
+              ]}
             />
-            <Line type="monotone" dataKey="rsi" dot={false} connectNulls={false} strokeWidth={2} />
+            <Line
+              type="monotone"
+              dataKey="rsi"
+              dot={false}
+              connectNulls={false}
+              strokeWidth={2}
+              isAnimationActive={false}
+            />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-4 rounded-lg border border-slate-800 bg-slate-950/50 p-3 text-xs text-slate-400">
-        RSI above 70 indicates strong recent momentum and an overbought zone; below 30 indicates weak recent momentum and an oversold zone. These are indicators, not standalone buy/sell signals.
+      <div className="mt-2 flex justify-between text-[11px] text-slate-500">
+        <span>Oversold &lt; 30</span>
+        <span>{rsiLabel(latest)}</span>
+        <span>Overbought &gt; 70</span>
       </div>
-    </section>
+    </div>
   );
 }
 
-function IndicatorCard({ title, value, detail }: { title: string; value: string; detail: string }) {
+function IndicatorCard({
+  title,
+  value,
+  detail,
+}: {
+  title: string;
+  value: string;
+  detail: string;
+}) {
   return (
     <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-4">
-      <div className="text-xs uppercase tracking-wide text-slate-500">{title}</div>
+      <div className="text-xs uppercase tracking-wide text-slate-500">
+        {title}
+      </div>
       <div className="mt-2 text-xl font-semibold text-white">{value}</div>
       <div className="mt-1 text-xs text-slate-400">{detail}</div>
     </div>
   );
 }
 
-function MovingAverage({ title, value, price }: { title: string; value: number; price: number }) {
+function MovingAverage({
+  title,
+  value,
+  price,
+}: {
+  title: string;
+  value: number;
+  price: number;
+}) {
   const available = Number.isFinite(value);
-  const relation = available ? (price >= value ? "Price above" : "Price below") : "Insufficient history";
+  const relation = available
+    ? price >= value
+      ? "Price above"
+      : "Price below"
+    : "Insufficient history";
+
   return (
     <div className="rounded-xl border border-slate-800 p-4">
       <div className="text-sm text-slate-400">{title}</div>
-      <div className="mt-1 text-lg font-semibold text-white">{available ? `₹${value.toFixed(2)}` : "—"}</div>
+      <div className="mt-1 text-lg font-semibold text-white">
+        {available ? `₹${value.toFixed(2)}` : "—"}
+      </div>
       <div className="mt-1 text-xs text-slate-500">{relation}</div>
     </div>
   );
