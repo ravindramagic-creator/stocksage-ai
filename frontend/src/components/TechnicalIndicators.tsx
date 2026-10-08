@@ -358,10 +358,7 @@ function RsiChart({
                   year: "numeric",
                 });
               }}
-              formatter={(value: number | string | undefined) => [
-                formatValue(Number(value)),
-                "RSI",
-              ]}
+              formatter={(value) => [formatValue(Number(value)), "RSI"]}
             />
             <Line
               type="monotone"
