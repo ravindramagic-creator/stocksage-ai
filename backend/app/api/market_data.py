@@ -54,7 +54,7 @@ def get_quote(symbol: str):
 def get_quotes(
     symbols: str = Query(
         ...,
-        description="Comma-separated NSE symbols, maximum 50",
+        description="Comma-separated NSE symbols, maximum 100",
     ),
 ):
     requested = [
@@ -69,10 +69,10 @@ def get_quotes(
     if not requested:
         return []
 
-    if len(requested) > 50:
+    if len(requested) > 100:
         raise HTTPException(
             status_code=400,
-            detail="A maximum of 50 symbols can be requested",
+            detail="A maximum of 100 symbols can be requested",
         )
 
     service = get_market_service()
