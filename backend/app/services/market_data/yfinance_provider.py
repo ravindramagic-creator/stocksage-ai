@@ -63,31 +63,64 @@ class YFinanceProvider(
             )
         )
 
-        fast_info = ticker.fast_info
+        # fast_info is not consistently populated for all NSE tickers
+        # (especially newer listings and smaller companies). Treat it as the
+        # primary source, but fall back to recent OHLCV when fields are absent
+        # or the fast_info request raises.
+        price = None
+        previous_close = None
+        open_price = None
+        day_high = None
+        day_low = None
+        volume = None
 
-        price = self._safe_float(
-            fast_info.get("lastPrice")
-        )
+        try:
+            fast_info = ticker.fast_info
+            price = self._safe_float(fast_info.get("lastPrice"))
+            previous_close = self._safe_float(fast_info.get("previousClose"))
+            open_price = self._safe_float(fast_info.get("open"))
+            day_high = self._safe_float(fast_info.get("dayHigh"))
+            day_low = self._safe_float(fast_info.get("dayLow"))
+            volume = self._safe_int(fast_info.get("lastVolume"))
+        except Exception:
+            # Continue to the history fallback below.
+            pass
 
-        previous_close = self._safe_float(
-            fast_info.get("previousClose")
-        )
+        if price is None:
+            try:
+                history = ticker.history(
+                    period="5d",
+                    interval="1d",
+                    auto_adjust=False,
+                    raise_errors=True,
+                )
+                if history is not None and not history.empty:
+                    closes = history["Close"].dropna()
+                    if not closes.empty:
+                        price = self._safe_float(closes.iloc[-1])
+                        if len(closes) >= 2:
+                            previous_close = self._safe_float(closes.iloc[-2])
 
-        open_price = self._safe_float(
-            fast_info.get("open")
-        )
-
-        day_high = self._safe_float(
-            fast_info.get("dayHigh")
-        )
-
-        day_low = self._safe_float(
-            fast_info.get("dayLow")
-        )
-
-        volume = self._safe_int(
-            fast_info.get("lastVolume")
-        )
+                    if "Open" in history.columns:
+                        opens = history["Open"].dropna()
+                        if not opens.empty:
+                            open_price = self._safe_float(opens.iloc[-1])
+                    if "High" in history.columns:
+                        highs = history["High"].dropna()
+                        if not highs.empty:
+                            day_high = self._safe_float(highs.iloc[-1])
+                    if "Low" in history.columns:
+                        lows = history["Low"].dropna()
+                        if not lows.empty:
+                            day_low = self._safe_float(lows.iloc[-1])
+                    if "Volume" in history.columns:
+                        volumes = history["Volume"].dropna()
+                        if not volumes.empty:
+                            volume = self._safe_int(volumes.iloc[-1])
+            except Exception:
+                # Preserve the normal API contract; the caller will surface
+                # unavailable prices as a 404 instead of crashing the worker.
+                pass
 
         change = None
         change_percent = None
