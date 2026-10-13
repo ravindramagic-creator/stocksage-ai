@@ -44,21 +44,50 @@ export async function getQuote(
 export async function getQuotes(
   symbols: string[],
 ): Promise<StockQuote[]> {
-  if (!symbols.length) {
+  const uniqueSymbols = [
+    ...new Set(
+      symbols
+        .map((symbol) => symbol.trim().toUpperCase())
+        .filter(Boolean),
+    ),
+  ];
+
+  if (!uniqueSymbols.length) {
     return [];
   }
 
-  const response =
-    await apiClient.get<StockQuote[]>(
-      "/market/quotes",
-      {
-        params: {
-          symbols: symbols.join(","),
-        },
-      },
-    );
+  // The backend intentionally limits each request to 50 symbols.
+  // Split larger watchlists into valid batches so the entire quote request
+  // does not fail with HTTP 400 when the user follows more than 50 stocks.
+  const batchSize = 50;
+  const batches: string[][] = [];
 
-  return response.data;
+  for (let index = 0; index < uniqueSymbols.length; index += batchSize) {
+    batches.push(uniqueSymbols.slice(index, index + batchSize));
+  }
+
+  const responses = await Promise.all(
+    batches.map((batch) =>
+      apiClient.get<StockQuote[]>("/market/quotes", {
+        params: {
+          symbols: batch.join(","),
+        },
+      }),
+    ),
+  );
+
+  // Keep results from successful batches and preserve the requested order.
+  const quotesBySymbol = new Map<string, StockQuote>();
+
+  for (const response of responses) {
+    for (const quote of response.data) {
+      quotesBySymbol.set(quote.symbol.toUpperCase(), quote);
+    }
+  }
+
+  return uniqueSymbols
+    .map((symbol) => quotesBySymbol.get(symbol))
+    .filter((quote): quote is StockQuote => quote !== undefined);
 }
 
 export async function getHistory(
