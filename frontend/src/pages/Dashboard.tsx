@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { MarketSummary } from "../components/MarketSummary";
+import { SectorAnalysis } from "../components/SectorAnalysis";
 import { BestStocksScreener } from "../components/BestStocksScreener";
 import { MarketSummaryToday } from "../components/MarketSummaryToday";
 import { MarketRegime } from "../components/MarketRegime";
@@ -57,6 +58,8 @@ export function Dashboard() {
           </div>
           <MarketSummary />
         </section>
+
+        <SectorAnalysis />
 
         {secondaryContentReady && (
           <>
