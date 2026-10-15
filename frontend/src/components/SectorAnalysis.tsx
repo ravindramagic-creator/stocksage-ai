@@ -300,10 +300,15 @@ export function SectorAnalysis() {
 
           <div className="rounded-lg border border-slate-800 bg-slate-950 p-3">
             <div className="mb-2">
-              <h3 className="font-semibold text-white">{data.name} vs NIFTY 50</h3>
+              <h3 className="font-semibold text-white">{data.chart_label ?? data.name} vs NIFTY 50</h3>
               <p className="text-xs text-slate-500">
                 Both lines start at 100; a higher ending value means stronger performance over the selected period.
               </p>
+              {data.sector_history_is_proxy && (
+                <p className="mt-1 text-xs text-amber-300">
+                  The official Yahoo index symbol is unavailable. Showing {data.sector_history_source} as an ETF proxy, not the official sector index.
+                </p>
+              )}
             </div>
             {chartData.length === 0 ? (
               <div className="flex h-64 items-center justify-center text-sm text-slate-500">No chart history returned for this period.</div>
@@ -318,13 +323,13 @@ export function SectorAnalysis() {
                       contentStyle={{ background: "#020617", border: "1px solid #334155", borderRadius: 8 }}
                       labelStyle={{ color: "#cbd5e1" }}
                       formatter={(value, name) => {
-                        const label = name === "sector" ? data.name : name === "nifty50" ? "NIFTY 50" : String(name);
+                        const label = name === "sector" ? (data.chart_label ?? data.name) : name === "nifty50" ? "NIFTY 50" : String(name);
                         return [value == null ? "—" : Number(value).toFixed(2), label];
                       }}
                     />
                     <Legend
                       formatter={(value) =>
-                        value === "sector" ? data.name : value === "nifty50" ? "NIFTY 50" : value
+                        value === "sector" ? (data.chart_label ?? data.name) : value === "nifty50" ? "NIFTY 50" : value
                       }
                     />
                     <Line type="monotone" dataKey="sector" name="sector" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
