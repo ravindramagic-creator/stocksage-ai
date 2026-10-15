@@ -28,6 +28,25 @@ SECTORS = [
     {"key": "realty", "name": "NIFTY Realty", "nse_index": "NIFTY REALTY", "symbol": "^CNXREALTY"},
     {"key": "private-bank", "name": "NIFTY Private Bank", "nse_index": "NIFTY PRIVATE BANK", "symbol": "^NIFTYPVTBANK"},
     {"key": "oil-gas", "name": "NIFTY Oil & Gas", "nse_index": "NIFTY OIL & GAS", "symbol": "^CNXOILGAS"},
+    # Broad-market indices
+    {"key": "nifty-100", "name": "NIFTY 100", "nse_index": "NIFTY 100", "symbol": "^CNX100"},
+    {"key": "nifty-next-50", "name": "NIFTY Next 50", "nse_index": "NIFTY NEXT 50", "symbol": "^NSMIDCP"},
+    {"key": "nifty-500", "name": "NIFTY 500", "nse_index": "NIFTY 500", "symbol": "^CRSLDX"},
+    # Mid-cap indices
+    {"key": "midcap-50", "name": "NIFTY Midcap 50", "nse_index": "NIFTY MIDCAP 50", "symbol": "^NSEMDCP50"},
+    {"key": "midcap-100", "name": "NIFTY Midcap 100", "nse_index": "NIFTY MIDCAP 100", "symbol": "^CNXMDCP"},
+    {"key": "midcap-150", "name": "NIFTY Midcap 150", "nse_index": "NIFTY MIDCAP 150", "symbol": "^NIFTYMDCP150"},
+    # Small-cap and micro-cap indices
+    {"key": "smallcap-50", "name": "NIFTY Smallcap 50", "nse_index": "NIFTY SMALLCAP 50", "symbol": "^CNXSC50"},
+    {"key": "smallcap-100", "name": "NIFTY Smallcap 100", "nse_index": "NIFTY SMALLCAP 100", "symbol": "^CNXSC"},
+    {"key": "smallcap-250", "name": "NIFTY Smallcap 250", "nse_index": "NIFTY SMALLCAP 250", "symbol": "^NIFTYSC250"},
+    {"key": "microcap-250", "name": "NIFTY Microcap 250", "nse_index": "NIFTY MICROCAP 250", "symbol": "^NIFTYMICROCAP250"},
+    {"key": "midsmallcap-400", "name": "NIFTY MidSmallcap 400", "nse_index": "NIFTY MIDSMALLCAP 400", "symbol": "^NIFTYMS400"},
+    # Additional sector and thematic indices
+    {"key": "infrastructure", "name": "NIFTY Infrastructure", "nse_index": "NIFTY INFRASTRUCTURE", "symbol": "^CNXINFRA"},
+    {"key": "energy", "name": "NIFTY Energy", "nse_index": "NIFTY ENERGY", "symbol": "^CNXENERGY"},
+    {"key": "cpse", "name": "NIFTY CPSE", "nse_index": "NIFTY CPSE", "symbol": "^CNXCPSE"},
+    {"key": "pse", "name": "NIFTY PSE", "nse_index": "NIFTY PSE", "symbol": "^CNXPSE"},
 ]
 BENCHMARK_SYMBOL = "^NSEI"
 CACHE_TTL_SECONDS = 300
@@ -209,6 +228,21 @@ CONSTITUENT_CSV_URLS = {
     "NIFTY REALTY": "https://www.niftyindices.com/IndexConstituent/ind_niftyrealty_list.csv",
     "NIFTY PRIVATE BANK": "https://www.niftyindices.com/IndexConstituent/ind_niftyprivatebank_list.csv",
     "NIFTY OIL & GAS": "https://www.niftyindices.com/IndexConstituent/ind_niftyoilgas_list.csv",
+    "NIFTY 100": "https://www.niftyindices.com/IndexConstituent/ind_nifty100_list.csv",
+    "NIFTY NEXT 50": "https://www.niftyindices.com/IndexConstituent/ind_niftynext50_list.csv",
+    "NIFTY 500": "https://www.niftyindices.com/IndexConstituent/ind_nifty500_list.csv",
+    "NIFTY MIDCAP 50": "https://www.niftyindices.com/IndexConstituent/ind_niftymidcap50_list.csv",
+    "NIFTY MIDCAP 100": "https://www.niftyindices.com/IndexConstituent/ind_niftymidcap100_list.csv",
+    "NIFTY MIDCAP 150": "https://www.niftyindices.com/IndexConstituent/ind_niftymidcap150_list.csv",
+    "NIFTY SMALLCAP 50": "https://www.niftyindices.com/IndexConstituent/ind_niftysmallcap50_list.csv",
+    "NIFTY SMALLCAP 100": "https://www.niftyindices.com/IndexConstituent/ind_niftysmallcap100_list.csv",
+    "NIFTY SMALLCAP 250": "https://www.niftyindices.com/IndexConstituent/ind_niftysmallcap250_list.csv",
+    "NIFTY MICROCAP 250": "https://www.niftyindices.com/IndexConstituent/ind_niftymicrocap250_list.csv",
+    "NIFTY MIDSMALLCAP 400": "https://www.niftyindices.com/IndexConstituent/ind_niftymidsmallcap400_list.csv",
+    "NIFTY INFRASTRUCTURE": "https://www.niftyindices.com/IndexConstituent/ind_niftyinfrastructure_list.csv",
+    "NIFTY ENERGY": "https://www.niftyindices.com/IndexConstituent/ind_niftyenergy_list.csv",
+    "NIFTY CPSE": "https://www.niftyindices.com/IndexConstituent/ind_niftycpse_list.csv",
+    "NIFTY PSE": "https://www.niftyindices.com/IndexConstituent/ind_niftypse_list.csv",
 }
 
 
@@ -267,6 +301,21 @@ STATIC_CONSTITUENTS = {
     "NIFTY REALTY": ["DLF", "GODREJPROP", "PRESTIGE", "OBEROIRLTY", "LODHA", "PHOENIXLTD", "BRIGADE", "SOBHA", "ANANTRAJ", "MAHLIFE"],
     "NIFTY PRIVATE BANK": ["HDFCBANK", "ICICIBANK", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "IDFCFIRSTB", "FEDERALBNK", "AUBANK", "BANDHANBNK", "YESBANK", "RBLBANK", "KARURVYSYA"],
     "NIFTY OIL & GAS": ["RELIANCE", "ONGC", "BPCL", "IOC", "GAIL", "HINDPETRO", "IGL", "PETRONET", "ATGL", "OIL", "GUJGASLTD", "MGL"],
+    "NIFTY 100": ["RELIANCE", "HDFCBANK", "ICICIBANK", "BHARTIARTL", "INFY", "TCS", "SBIN", "ITC", "LICI", "HINDUNILVR"],
+    "NIFTY NEXT 50": ["ADANIENT", "ADANIPORTS", "BEL", "HAL", "TRENT", "ZOMATO", "JIOFIN", "DLF", "VBL", "PIDILITIND"],
+    "NIFTY 500": ["RELIANCE", "HDFCBANK", "ICICIBANK", "INFY", "TCS", "SBIN", "BHARTIARTL", "ITC", "LT", "BAJFINANCE"],
+    "NIFTY MIDCAP 50": ["BSE", "POLICYBZR", "DIXON", "PERSISTENT", "COFORGE", "CUMMINSIND", "INDHOTEL", "MAXHEALTH", "MPHASIS", "FEDERALBNK"],
+    "NIFTY MIDCAP 100": ["PERSISTENT", "COFORGE", "POLICYBZR", "BSE", "DIXON", "MPHASIS", "INDHOTEL", "MAXHEALTH", "FEDERALBNK", "CUMMINSIND"],
+    "NIFTY MIDCAP 150": ["PERSISTENT", "COFORGE", "POLICYBZR", "BSE", "DIXON", "MPHASIS", "INDHOTEL", "MAXHEALTH", "FEDERALBNK", "CUMMINSIND"],
+    "NIFTY SMALLCAP 50": ["KAYNES", "KIRLOSENG", "BLS", "CAMS", "CDSL", "ANGELONE", "CLEAN", "CYIENT", "DATAPATTNS", "FIVESTAR"],
+    "NIFTY SMALLCAP 100": ["KAYNES", "KIRLOSENG", "BLS", "CAMS", "CDSL", "ANGELONE", "CLEAN", "CYIENT", "DATAPATTNS", "FIVESTAR", "HOMEFIRST", "RATEGAIN", "AETHER", "IDEAFORGE", "E2E"],
+    "NIFTY SMALLCAP 250": ["KAYNES", "KIRLOSENG", "BLS", "CAMS", "CDSL", "ANGELONE", "CLEAN", "CYIENT", "DATAPATTNS", "FIVESTAR", "HOMEFIRST", "RATEGAIN", "AETHER", "IDEAFORGE", "E2E", "MTARTECH", "WELCORP", "HFCL", "STLTECH", "RRKABEL"],
+    "NIFTY MICROCAP 250": ["KAYNES", "KIRLOSENG", "BLS", "CAMS", "CLEAN", "DATAPATTNS", "FIVESTAR", "HOMEFIRST", "RATEGAIN", "AETHER", "IDEAFORGE", "E2E", "MTARTECH", "WELCORP", "HFCL", "STLTECH", "RRKABEL", "MARINE", "ELLEN", "SKYGOLD"],
+    "NIFTY MIDSMALLCAP 400": ["PERSISTENT", "COFORGE", "POLICYBZR", "BSE", "DIXON", "MPHASIS", "INDHOTEL", "MAXHEALTH", "FEDERALBNK", "CUMMINSIND"],
+    "NIFTY INFRASTRUCTURE": ["LT", "ULTRACEMCO", "NTPC", "POWERGRID", "ADANIPORTS", "DLF", "IRFC", "RVNL", "NBCC", "CUMMINSIND"],
+    "NIFTY ENERGY": ["RELIANCE", "NTPC", "POWERGRID", "ONGC", "COALINDIA", "BPCL", "IOC", "GAIL", "TATAPOWER", "ADANIGREEN"],
+    "NIFTY CPSE": ["COALINDIA", "ONGC", "NTPC", "POWERGRID", "BEL", "HAL", "CONCOR", "NBCC", "IRFC", "REC"],
+    "NIFTY PSE": ["COALINDIA", "ONGC", "NTPC", "POWERGRID", "BEL", "HAL", "CONCOR", "NBCC", "IRFC", "REC"],
 }
 
 
