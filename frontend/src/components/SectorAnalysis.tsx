@@ -317,9 +317,16 @@ export function SectorAnalysis() {
                     <Tooltip
                       contentStyle={{ background: "#020617", border: "1px solid #334155", borderRadius: 8 }}
                       labelStyle={{ color: "#cbd5e1" }}
-                      formatter={(value, name) => [value == null ? "—" : Number(value).toFixed(2), name === "sector" ? data.name : "NIFTY 50"]}
+                      formatter={(value, name) => {
+                        const label = name === "sector" ? data.name : name === "nifty50" ? "NIFTY 50" : String(name);
+                        return [value == null ? "—" : Number(value).toFixed(2), label];
+                      }}
                     />
-                    <Legend formatter={(value) => value === "sector" ? data.name : "NIFTY 50"} />
+                    <Legend
+                      formatter={(value) =>
+                        value === "sector" ? data.name : value === "nifty50" ? "NIFTY 50" : value
+                      }
+                    />
                     <Line type="monotone" dataKey="sector" name="sector" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
                     <Line type="monotone" dataKey="nifty50" name="nifty50" stroke="#60a5fa" strokeWidth={2} dot={false} connectNulls />
                     {selectedSymbols.map((symbol, index) => (
