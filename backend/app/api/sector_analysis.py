@@ -28,6 +28,12 @@ SECTORS = [
     {"key": "realty", "name": "NIFTY Realty", "nse_index": "NIFTY REALTY", "symbol": "^CNXREALTY"},
     {"key": "private-bank", "name": "NIFTY Private Bank", "nse_index": "NIFTY PRIVATE BANK", "symbol": "^NIFTYPVTBANK"},
     {"key": "oil-gas", "name": "NIFTY Oil & Gas", "nse_index": "NIFTY OIL & GAS", "symbol": "^CNXOILGAS"},
+    {"key": "telecom", "name": "NIFTY Telecommunications", "nse_index": "NIFTY TELECOMMUNICATIONS", "symbol": "^CNXTELECOM"},
+    {"key": "capital-goods", "name": "NIFTY Capital Goods", "nse_index": "NIFTY CAPITAL GOODS", "symbol": "^CNXCG"},
+    # Custom StockSage baskets: equal-weighted, rebased constituent performance (not official NSE indices).
+    {"key": "ai", "name": "StockSage AI & Data Infrastructure Basket (custom)", "nse_index": "STOCKSAGE AI BASKET", "symbol": "CUSTOM_BASKET", "custom": True},
+    {"key": "jewellery", "name": "StockSage Jewellery Basket (custom)", "nse_index": "STOCKSAGE JEWELLERY BASKET", "symbol": "CUSTOM_BASKET", "custom": True},
+    {"key": "auto-ancillary", "name": "StockSage Auto Ancillary Basket (custom)", "nse_index": "STOCKSAGE AUTO ANCILLARY BASKET", "symbol": "CUSTOM_BASKET", "custom": True},
     # Broad-market indices
     {"key": "nifty-100", "name": "NIFTY 100", "nse_index": "NIFTY 100", "symbol": "^CNX100"},
     {"key": "nifty-next-50", "name": "NIFTY Next 50", "nse_index": "NIFTY NEXT 50", "symbol": "^NSMIDCP"},
@@ -172,8 +178,41 @@ def _nse_index_history_series(index_name: str, period: str) -> list[dict]:
     ]
 
 
+def _custom_basket_history(index_name: str, period: str) -> list[dict]:
+    """Build an equal-weighted, rebased custom basket from available stock histories.
+
+    This is a transparent performance basket, not an official index calculation:
+    constituents are equally weighted at the start of the selected period and
+    there is no historical rebalancing or dividend adjustment.
+    """
+    constituents = _static_constituents(index_name)
+    if not constituents:
+        return []
+    histories: dict[str, dict[str, float]] = {}
+    for item in constituents:
+        try:
+            series = _history_series(f"{item['symbol']}.NS", period)
+        except Exception:
+            continue
+        if series:
+            histories[item["symbol"]] = {point["date"]: point["value"] for point in series}
+    if not histories:
+        return []
+    dates = sorted({stamp for series in histories.values() for stamp in series})
+    output = []
+    for stamp in dates:
+        values = [series[stamp] for series in histories.values() if stamp in series]
+        if not values:
+            continue
+        value = sum(values) / len(values)
+        output.append({"date": stamp, "value": round(value, 4), "close": round(value, 4)})
+    return output
+
+
 def _get_index_history_series(index_name: str, yahoo_symbol: str, period: str) -> tuple[list[dict], str]:
     """Try Yahoo first, then official NSE EOD index history for daily ranges."""
+    if yahoo_symbol == "CUSTOM_BASKET":
+        return _custom_basket_history(index_name, period), "StockSage custom equal-weighted basket"
     try:
         series = _history_series(yahoo_symbol, period)
         if series:
@@ -316,6 +355,10 @@ STATIC_CONSTITUENTS = {
     "NIFTY ENERGY": ["RELIANCE", "NTPC", "POWERGRID", "ONGC", "COALINDIA", "BPCL", "IOC", "GAIL", "TATAPOWER", "ADANIGREEN"],
     "NIFTY CPSE": ["COALINDIA", "ONGC", "NTPC", "POWERGRID", "BEL", "HAL", "CONCOR", "NBCC", "IRFC", "REC"],
     "NIFTY PSE": ["COALINDIA", "ONGC", "NTPC", "POWERGRID", "BEL", "HAL", "CONCOR", "NBCC", "IRFC", "REC"],
+    # Curated custom baskets. These are not official index constituents and should be reviewed periodically.
+    "STOCKSAGE AI BASKET": ["TCS", "INFY", "HCLTECH", "PERSISTENT", "COFORGE", "KPITTECH", "LTTS", "BEL", "HAL", "NETWEB", "E2E", "KAYNES"],
+    "STOCKSAGE JEWELLERY BASKET": ["TITAN", "KALYANKJIL", "SENCO", "THANGAMAYL", "RAJESHEXPO", "PCJEWELLER", "PNGJL", "TBZ"],
+    "STOCKSAGE AUTO ANCILLARY BASKET": ["MOTHERSON", "UNOMINDA", "BOSCHLTD", "BHARATFORG", "ENDURANCE", "SONACOMS", "SUNDRMFAST", "SUPRAJIT", "TIINDIA", "ZFSTEERING", "ASHOKLEY", "EXIDEIND"],
 }
 
 
