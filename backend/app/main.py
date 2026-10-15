@@ -14,6 +14,7 @@ from app.api.market_news import router as market_news_router
 from app.api.market_regime import router as market_regime_router
 from app.api.market_summary import router as market_summary_router
 from app.api.screener import router as screener_router
+from app.api.sector_analysis import router as sector_analysis_router
 from app.api.stock_search import router as stock_search_router
 from app.api.stocks import router as stocks_router
 from app.api.subscriptions import router as subscriptions_router
@@ -102,3 +103,4 @@ app.include_router(financial_results_router)
 app.include_router(fundamental_analysis_router)
 app.include_router(auto_sales_router)
 app.include_router(screener_router)
+app.include_router(sector_analysis_router)
