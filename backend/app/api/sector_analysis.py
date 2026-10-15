@@ -324,19 +324,20 @@ def get_sector_analysis(
                 status_code=400,
                 detail=f"Selected symbols are not constituents of {sector['name']}: {', '.join(invalid_symbols)}",
             )
-        try:
-            with ThreadPoolExecutor(max_workers=min(8, len(selected_symbols))) as executor:
-                futures = {
-                    symbol: executor.submit(_history_series, f"{symbol}.NS", period)
-                    for symbol in selected_symbols
-                }
-                constituent_histories = {
-                    symbol: futures[symbol].result()
-                    for symbol in selected_symbols
-                }
-            payload = {**payload, "constituent_histories": constituent_histories}
-        except Exception as exc:
-            raise HTTPException(status_code=502, detail=f"Unable to load selected constituent histories: {exc}") from exc
+        with ThreadPoolExecutor(max_workers=min(8, len(selected_symbols))) as executor:
+            futures = {
+                symbol: executor.submit(_history_series, f"{symbol}.NS", period)
+                for symbol in selected_symbols
+            }
+            constituent_histories = {}
+            for symbol, future in futures.items():
+                try:
+                    constituent_histories[symbol] = future.result()
+                except Exception:
+                    # One delisted, renamed, or temporarily unavailable ticker
+                    # should not break the entire multi-stock comparison request.
+                    constituent_histories[symbol] = []
+        payload = {**payload, "constituent_histories": constituent_histories}
     else:
         payload = {**payload, "constituent_histories": {}}
     return payload
