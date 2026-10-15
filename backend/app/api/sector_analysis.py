@@ -18,7 +18,7 @@ SECTORS = [
     {"key": "bank", "name": "NIFTY Bank", "nse_index": "NIFTY BANK", "symbol": "^NSEBANK"},
     {"key": "financial-services", "name": "NIFTY Financial Services", "nse_index": "NIFTY FINANCIAL SERVICES", "symbol": "^CNXFINANCE"},
     {"key": "fmcg", "name": "NIFTY FMCG", "nse_index": "NIFTY FMCG", "symbol": "^CNXFMCG"},
-    {"key": "healthcare", "name": "NIFTY Healthcare", "nse_index": "NIFTY HEALTHCARE", "symbol": "^CNXHEALTH"},
+    {"key": "healthcare", "name": "NIFTY Healthcare", "nse_index": "NIFTY HEALTHCARE", "symbol": "^CNXHEALTH", "fallback_symbol": "HEALTHIETF.NS"},
     {"key": "consumer-durables", "name": "NIFTY Consumer Durables", "nse_index": "NIFTY CONSUMER DURABLES", "symbol": "^CNXCONSUM"},
     {"key": "it", "name": "NIFTY IT", "nse_index": "NIFTY IT", "symbol": "^CNXIT"},
     {"key": "media", "name": "NIFTY Media", "nse_index": "NIFTY MEDIA", "symbol": "^CNXMEDIA"},
@@ -262,13 +262,16 @@ def get_sector_analysis(
     cache_key = f"sector-analysis:{sector_key}:{period}"
     cached = market_cache.get(cache_key)
 
-    # Reuse cached index history, but never return the cached payload early:
-    # it may contain an empty constituent list from a previous NSE outage.
+    # A few NSE indices do not have a working Yahoo Finance symbol.
+    # In those cases use a clearly labelled ETF proxy rather than returning 502.
+    sector_history_source = "official_index"
+    sector_history_is_proxy = False
     try:
         if (
             cached is not None
             and cached.get("sector_history")
             and cached.get("nifty50_history")
+            and not cached.get("sector_history_is_proxy", False)
         ):
             sector_history = cached["sector_history"]
             benchmark_history = cached["nifty50_history"]
@@ -276,8 +279,30 @@ def get_sector_analysis(
             with ThreadPoolExecutor(max_workers=2) as executor:
                 sector_future = executor.submit(_history_series, sector["symbol"], period)
                 benchmark_future = executor.submit(_history_series, BENCHMARK_SYMBOL, period)
-                sector_history = sector_future.result()
+                sector_result = None
+                sector_error = None
+                try:
+                    sector_result = sector_future.result()
+                except Exception as exc:
+                    sector_error = exc
                 benchmark_history = benchmark_future.result()
+
+            if sector_result:
+                sector_history = sector_result
+            else:
+                fallback_symbol = sector.get("fallback_symbol")
+                if not fallback_symbol:
+                    raise RuntimeError(
+                        f"No historical data returned for {sector['name']}: {sector_error or 'empty history'}"
+                    )
+                sector_history = _history_series(fallback_symbol, period)
+                if not sector_history:
+                    raise RuntimeError(
+                        f"Both {sector['symbol']} and fallback {fallback_symbol} returned no history"
+                    )
+                sector_history_source = fallback_symbol
+                sector_history_is_proxy = True
+
         if not sector_history:
             raise RuntimeError(f"No historical data returned for {sector['name']}")
         if not benchmark_history:
@@ -305,6 +330,9 @@ def get_sector_analysis(
         "key": sector["key"],
         "name": sector["name"],
         "period": period,
+        "sector_history_source": sector_history_source,
+        "sector_history_is_proxy": sector_history_is_proxy,
+        "chart_label": f"{sector['name']} (ETF proxy)" if sector_history_is_proxy else sector["name"],
         "sector_return_percent": sector_return,
         "nifty50_return_percent": benchmark_return,
         "excess_return_percent": round(sector_return - benchmark_return, 2) if sector_return is not None and benchmark_return is not None else None,
