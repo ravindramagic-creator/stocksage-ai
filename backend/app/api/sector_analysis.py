@@ -3,7 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 import csv
 from io import StringIO
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import requests
 from fastapi import APIRouter, HTTPException, Query
 
@@ -43,6 +43,110 @@ PERIOD_CONFIG = {
     "5y": ("5y", "1d"),
 }
 
+
+
+def _period_start(period: str) -> datetime:
+    days = {
+        "1d": 1,
+        "5d": 7,
+        "1mo": 31,
+        "3mo": 93,
+        "6mo": 186,
+        "1y": 366,
+        "3y": 1096,
+        "5y": 1826,
+    }[period]
+    return datetime.now().date() - timedelta(days=days)
+
+
+def _nse_index_history_series(index_name: str, period: str) -> list[dict]:
+    """Official NSE daily index history fallback when Yahoo has no index ticker.
+
+    NSE's public historical index endpoint returns EOD closes, so it is used
+    for 1M+ ranges only. It is not used to fabricate intraday 1D/5D candles.
+    """
+    if period in {"1d", "5d"}:
+        return []
+
+    start_date = _period_start(period)
+    end_date = datetime.now().date()
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0 Safari/537.36",
+        "Accept": "application/json,text/plain,*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.nseindia.com/reports-indices-historical-index-data",
+    })
+    session.get("https://www.nseindia.com/", timeout=10)
+    response = session.get(
+        "https://www.nseindia.com/api/historicalOR/indicesHistory",
+        params={
+            "indexType": index_name,
+            "from": start_date.strftime("%d-%m-%Y"),
+            "to": end_date.strftime("%d-%m-%Y"),
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    payload = response.json()
+    rows = payload.get("data", []) if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        return []
+
+    closes = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        close = row.get("EOD_CLOSE_INDEX_VAL") or row.get("CLOSE_INDEX_VAL") or row.get("close")
+        stamp = row.get("EOD_TIMESTAMP") or row.get("TIMESTAMP") or row.get("date")
+        if close is None or not stamp:
+            continue
+        try:
+            value = float(str(close).replace(",", ""))
+        except (TypeError, ValueError):
+            continue
+        parsed_date = None
+        for fmt in ("%d-%b-%Y", "%d-%m-%Y", "%Y-%m-%d", "%d %b %Y"):
+            try:
+                parsed_date = datetime.strptime(str(stamp)[:11].strip(), fmt).date()
+                break
+            except ValueError:
+                continue
+        if parsed_date is None:
+            continue
+        closes.append((parsed_date, value))
+
+    closes.sort(key=lambda item: item[0])
+    if not closes or closes[0][1] == 0:
+        return []
+    base = closes[0][1]
+    return [
+        {
+            "date": date_value.isoformat(),
+            "value": round(close / base * 100, 4),
+            "close": round(close, 2),
+        }
+        for date_value, close in closes
+    ]
+
+
+def _get_index_history_series(index_name: str, yahoo_symbol: str, period: str) -> tuple[list[dict], str]:
+    """Try Yahoo first, then official NSE EOD index history for daily ranges."""
+    try:
+        series = _history_series(yahoo_symbol, period)
+        if series:
+            return series, "Yahoo Finance"
+    except Exception:
+        pass
+
+    try:
+        series = _nse_index_history_series(index_name, period)
+        if series:
+            return series, "NSE historical index API"
+    except Exception:
+        pass
+
+    return [], ""
 
 def _history_series(symbol: str, period: str) -> list[dict]:
     history_period, interval = PERIOD_CONFIG[period]
@@ -262,9 +366,11 @@ def get_sector_analysis(
     cache_key = f"sector-analysis:{sector_key}:{period}"
     cached = market_cache.get(cache_key)
 
-    # A few NSE indices do not have a working Yahoo Finance symbol.
-    # In those cases use a clearly labelled ETF proxy rather than returning 502.
-    sector_history_source = "official_index"
+    # Yahoo is primary. If its symbol is missing, fall back to the official
+    # NSE historical index endpoint for EOD ranges. Intraday history cannot be
+    # reconstructed from EOD data, so it remains unavailable unless a valid
+    # intraday source exists.
+    sector_history_source = "Yahoo Finance"
     sector_history_is_proxy = False
     try:
         if (
@@ -275,40 +381,44 @@ def get_sector_analysis(
         ):
             sector_history = cached["sector_history"]
             benchmark_history = cached["nifty50_history"]
+            sector_history_source = cached.get("sector_history_source", "cached")
         else:
             with ThreadPoolExecutor(max_workers=2) as executor:
-                sector_future = executor.submit(_history_series, sector["symbol"], period)
-                benchmark_future = executor.submit(_history_series, BENCHMARK_SYMBOL, period)
-                sector_result = None
-                sector_error = None
-                try:
-                    sector_result = sector_future.result()
-                except Exception as exc:
-                    sector_error = exc
-                benchmark_history = benchmark_future.result()
+                sector_future = executor.submit(
+                    _get_index_history_series, sector["nse_index"], sector["symbol"], period
+                )
+                benchmark_future = executor.submit(
+                    _get_index_history_series, "NIFTY 50", BENCHMARK_SYMBOL, period
+                )
+                sector_history, sector_source = sector_future.result()
+                benchmark_history, benchmark_source = benchmark_future.result()
 
-            if sector_result:
-                sector_history = sector_result
-            else:
+            if not sector_history:
                 fallback_symbol = sector.get("fallback_symbol")
-                if not fallback_symbol:
-                    raise RuntimeError(
-                        f"No historical data returned for {sector['name']}: {sector_error or 'empty history'}"
-                    )
-                sector_history = _history_series(fallback_symbol, period)
+                if fallback_symbol and period in {"1d", "5d"}:
+                    try:
+                        sector_history = _history_series(fallback_symbol, period)
+                    except Exception:
+                        sector_history = []
+                    if sector_history:
+                        sector_history_source = fallback_symbol
+                        sector_history_is_proxy = True
                 if not sector_history:
                     raise RuntimeError(
-                        f"Both {sector['symbol']} and fallback {fallback_symbol} returned no history"
+                        f"No Yahoo or NSE history available for {sector['name']} for period {period}"
                     )
-                sector_history_source = fallback_symbol
-                sector_history_is_proxy = True
+            else:
+                sector_history_source = sector_source
+
+            if not benchmark_history:
+                raise RuntimeError(f"No Yahoo or NSE history available for NIFTY 50 for period {period}")
 
         if not sector_history:
             raise RuntimeError(f"No historical data returned for {sector['name']}")
         if not benchmark_history:
             raise RuntimeError("No NIFTY 50 historical data returned")
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Unable to load sector history: {exc}") from exc
+        raise HTTPException(status_code=502, detail=f"Unable to load sector history from Yahoo/NSE: {exc}") from exc
 
     try:
         constituents = _get_constituents(sector["nse_index"])
