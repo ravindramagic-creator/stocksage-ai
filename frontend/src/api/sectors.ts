@@ -24,6 +24,9 @@ export interface SectorAnalysisResponse {
   key: string;
   name: string;
   period: string;
+  sector_history_source?: string;
+  sector_history_is_proxy?: boolean;
+  chart_label?: string;
   sector_return_percent: number | null;
   nifty50_return_percent: number | null;
   excess_return_percent: number | null;
