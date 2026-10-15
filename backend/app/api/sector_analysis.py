@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
-from urllib.parse import quote
-
 import requests
 from fastapi import APIRouter, HTTPException, Query
 
@@ -31,21 +29,33 @@ SECTORS = [
 ]
 BENCHMARK_SYMBOL = "^NSEI"
 CACHE_TTL_SECONDS = 300
-ALLOWED_PERIODS = {"1mo", "3mo", "6mo", "1y", "3y", "5y"}
-PERIOD_TO_YFINANCE = {"1mo": "1mo", "3mo": "3mo", "6mo": "6mo", "1y": "1y", "3y": "3y", "5y": "5y"}
+ALLOWED_PERIODS = {"1d", "5d", "1mo", "3mo", "6mo", "1y", "3y", "5y"}
+PERIOD_CONFIG = {
+    "1d": ("1d", "5m"),
+    "5d": ("5d", "15m"),
+    "1mo": ("1mo", "1d"),
+    "3mo": ("3mo", "1d"),
+    "6mo": ("6mo", "1d"),
+    "1y": ("1y", "1d"),
+    "3y": ("3y", "1d"),
+    "5y": ("5y", "1d"),
+}
 
 
 def _history_series(symbol: str, period: str) -> list[dict]:
-    history = get_market_service().get_history(symbol, PERIOD_TO_YFINANCE[period], "1d")
+    history_period, interval = PERIOD_CONFIG[period]
+    history = get_market_service().get_history(symbol, history_period, interval)
     points = [point for point in history.points if point.close is not None]
     if not points:
         return []
     base = float(points[0].close)
     if base == 0:
         return []
+    intraday = period in {"1d", "5d"}
     return [
         {
-            "date": point.timestamp.date().isoformat(),
+            # Intraday timestamps must stay distinct; date-only keys collapse a whole session.
+            "date": point.timestamp.isoformat() if intraday else point.timestamp.date().isoformat(),
             "value": round(float(point.close) / base * 100, 4),
             "close": round(float(point.close), 2),
         }
@@ -112,6 +122,7 @@ def list_sector_indices():
 def get_sector_analysis(
     sector_key: str,
     period: str = Query("6mo"),
+    symbols: str | None = Query(None, description="Optional comma-separated constituent symbols to compare; maximum 8"),
 ):
     if period not in ALLOWED_PERIODS:
         raise HTTPException(status_code=400, detail=f"Unsupported period: {period}")
@@ -119,9 +130,15 @@ def get_sector_analysis(
     if sector is None:
         raise HTTPException(status_code=404, detail=f"Unknown sector: {sector_key}")
 
+    selected_symbols = list(dict.fromkeys(
+        item.strip().upper() for item in (symbols or "").split(",") if item.strip()
+    ))
+    if len(selected_symbols) > 8:
+        raise HTTPException(status_code=400, detail="A maximum of 8 constituents can be compared at once")
+
     cache_key = f"sector-analysis:{sector_key}:{period}"
     cached = market_cache.get(cache_key)
-    if cached is not None:
+    if cached is not None and not selected_symbols:
         return cached
 
     try:
@@ -168,4 +185,28 @@ def get_sector_analysis(
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     market_cache.set(cache_key, payload, CACHE_TTL_SECONDS)
+
+    if selected_symbols:
+        allowed_symbols = {item["symbol"] for item in constituents}
+        invalid_symbols = [symbol for symbol in selected_symbols if symbol not in allowed_symbols]
+        if invalid_symbols:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Selected symbols are not constituents of {sector['name']}: {', '.join(invalid_symbols)}",
+            )
+        try:
+            with ThreadPoolExecutor(max_workers=min(8, len(selected_symbols))) as executor:
+                futures = {
+                    symbol: executor.submit(_history_series, f"{symbol}.NS", period)
+                    for symbol in selected_symbols
+                }
+                constituent_histories = {
+                    symbol: futures[symbol].result()
+                    for symbol in selected_symbols
+                }
+            payload = {**payload, "constituent_histories": constituent_histories}
+        except Exception as exc:
+            raise HTTPException(status_code=502, detail=f"Unable to load selected constituent histories: {exc}") from exc
+    else:
+        payload = {**payload, "constituent_histories": {}}
     return payload
