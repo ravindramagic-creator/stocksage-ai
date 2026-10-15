@@ -20,6 +20,8 @@ import {
 } from "../api/sectors";
 
 const PERIODS = [
+  { value: "1d", label: "1D" },
+  { value: "5d", label: "5D" },
   { value: "1mo", label: "1M" },
   { value: "3mo", label: "3M" },
   { value: "6mo", label: "6M" },
@@ -62,8 +64,12 @@ function SummaryCard({
 
 function ConstituentsTable({
   constituents,
+  selectedSymbols,
+  onToggleSymbol,
 }: {
   constituents: SectorConstituent[];
+  selectedSymbols: string[];
+  onToggleSymbol: (symbol: string) => void;
 }) {
   const [filter, setFilter] = useState("");
   const [sortBy, setSortBy] = useState<"change" | "symbol">("change");
@@ -121,6 +127,7 @@ function ConstituentsTable({
             <thead className="bg-slate-950 text-xs uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-3 py-3">#</th>
+                <th className="px-3 py-3">Compare</th>
                 <th className="px-3 py-3">Stock</th>
                 <th className="px-3 py-3 text-right">Price</th>
                 <th className="px-3 py-3 text-right">Day change</th>
@@ -131,6 +138,15 @@ function ConstituentsTable({
               {visible.map((stock, index) => (
                 <tr key={stock.symbol} className="border-t border-slate-800/70 hover:bg-slate-800/40">
                   <td className="px-3 py-3 text-slate-500">{index + 1}</td>
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={selectedSymbols.includes(stock.symbol)}
+                      disabled={!selectedSymbols.includes(stock.symbol) && selectedSymbols.length >= 8}
+                      onChange={() => onToggleSymbol(stock.symbol)}
+                      aria-label={`Compare ${stock.symbol}`}
+                    />
+                  </td>
                   <td className="px-3 py-3">
                     <Link to={`/stock/${stock.symbol}`} className="font-semibold text-cyan-400 hover:text-cyan-300">
                       {stock.symbol}
@@ -147,7 +163,7 @@ function ConstituentsTable({
                 </tr>
               ))}
               {visible.length === 0 && (
-                <tr><td colSpan={5} className="p-5 text-center text-slate-500">No constituents match your filter.</td></tr>
+                <tr><td colSpan={6} className="p-5 text-center text-slate-500">No constituents match your filter.</td></tr>
               )}
             </tbody>
           </table>
@@ -160,6 +176,7 @@ function ConstituentsTable({
 export function SectorAnalysis() {
   const [sectorKey, setSectorKey] = useState("it");
   const [period, setPeriod] = useState("6mo");
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
 
   const sectorsQuery = useQuery({
     queryKey: ["sector-indices"],
@@ -168,8 +185,8 @@ export function SectorAnalysis() {
   });
 
   const analysisQuery = useQuery({
-    queryKey: ["sector-analysis", sectorKey, period],
-    queryFn: () => getSectorAnalysis(sectorKey, period),
+    queryKey: ["sector-analysis", sectorKey, period, selectedSymbols],
+    queryFn: () => getSectorAnalysis(sectorKey, period, selectedSymbols),
     enabled: Boolean(sectorKey),
     staleTime: 5 * 60 * 1000,
     retry: 1,
@@ -179,18 +196,39 @@ export function SectorAnalysis() {
 
   const chartData = useMemo(() => {
     if (!data) return [];
+    const histories = data.constituent_histories ?? {};
     const dates = new Set([
       ...data.sector_history.map((point) => point.date),
       ...data.nifty50_history.map((point) => point.date),
+      ...Object.values(histories).flatMap((series) => series.map((point) => point.date)),
     ]);
     const sectorByDate = new Map(data.sector_history.map((point) => [point.date, point.value]));
     const niftyByDate = new Map(data.nifty50_history.map((point) => [point.date, point.value]));
+    const selectedBySymbol = Object.fromEntries(
+      Object.entries(histories).map(([symbol, series]) => [
+        symbol,
+        new Map(series.map((point) => [point.date, point.value])),
+      ]),
+    );
     return [...dates].sort().map((date) => ({
       date,
       sector: sectorByDate.get(date) ?? null,
       nifty50: niftyByDate.get(date) ?? null,
+      ...Object.fromEntries(
+        Object.entries(selectedBySymbol).map(([symbol, values]) => [symbol, values.get(date) ?? null]),
+      ),
     }));
   }, [data]);
+
+  function toggleSymbol(symbol: string) {
+    setSelectedSymbols((current) =>
+      current.includes(symbol)
+        ? current.filter((item) => item !== symbol)
+        : current.length < 8
+          ? [...current, symbol]
+          : current,
+    );
+  }
 
   return (
     <section className="mb-8 rounded-xl border border-slate-800 bg-slate-900 p-5">
@@ -279,6 +317,18 @@ export function SectorAnalysis() {
                     <Legend formatter={(value) => value === "sector" ? data.name : "NIFTY 50"} />
                     <Line type="monotone" dataKey="sector" name="sector" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
                     <Line type="monotone" dataKey="nifty50" name="nifty50" stroke="#60a5fa" strokeWidth={2} dot={false} connectNulls />
+                    {selectedSymbols.map((symbol, index) => (
+                      <Line
+                        key={symbol}
+                        type="monotone"
+                        dataKey={symbol}
+                        name={symbol}
+                        stroke={["#f59e0b", "#f472b6", "#a78bfa", "#fb7185", "#2dd4bf", "#c084fc", "#facc15", "#94a3b8"][index]}
+                        strokeWidth={1.8}
+                        dot={false}
+                        connectNulls
+                      />
+                    ))}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -288,7 +338,20 @@ export function SectorAnalysis() {
           {data.constituents_error && (
             <p className="mt-3 text-xs text-amber-300">{data.constituents_error}</p>
           )}
-          <ConstituentsTable constituents={data.constituents} />
+          <div className="mt-5 rounded-lg border border-slate-800 bg-slate-950 p-3">
+            <div className="font-semibold text-white">Compare individual stocks</div>
+            <p className="mt-1 text-xs text-slate-500">
+              Select up to 8 constituents. Each selected stock is normalized to 100 at the start of the chosen period and plotted with the sector index and NIFTY 50.
+            </p>
+            <div className="mt-2 text-xs text-cyan-300">
+              {selectedSymbols.length}/8 selected{selectedSymbols.length ? `: ${selectedSymbols.join(", ")}` : ""}
+            </div>
+          </div>
+          <ConstituentsTable
+            constituents={data.constituents}
+            selectedSymbols={selectedSymbols}
+            onToggleSymbol={toggleSymbol}
+          />
           <p className="mt-3 text-xs text-slate-600">
             Market data can be delayed. Returns are calculated from available daily closing prices and exclude dividends.
           </p>
