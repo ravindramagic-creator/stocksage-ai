@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+import csv
+from io import StringIO
 from datetime import datetime, timezone
 import requests
 from fastapi import APIRouter, HTTPException, Query
@@ -63,51 +65,130 @@ def _history_series(symbol: str, period: str) -> list[dict]:
     ]
 
 
+# Nifty Indices publishes constituent CSVs independently of the NSE quote API.
+# These URLs are a fallback when NSE changes or blocks its equity-stockIndices endpoint.
+CONSTITUENT_CSV_URLS = {
+    "NIFTY AUTO": "https://www.niftyindices.com/IndexConstituent/ind_niftyauto_list.csv",
+    "NIFTY BANK": "https://www.niftyindices.com/IndexConstituent/ind_niftybank_list.csv",
+    "NIFTY FINANCIAL SERVICES": "https://www.niftyindices.com/IndexConstituent/ind_niftyfinancialservices_list.csv",
+    "NIFTY FMCG": "https://www.niftyindices.com/IndexConstituent/ind_niftyfmcg_list.csv",
+    "NIFTY HEALTHCARE": "https://www.niftyindices.com/IndexConstituent/ind_niftyhealthcare_list.csv",
+    "NIFTY CONSUMER DURABLES": "https://www.niftyindices.com/IndexConstituent/ind_niftyconsumerdurables_list.csv",
+    "NIFTY IT": "https://www.niftyindices.com/IndexConstituent/ind_niftyit_list.csv",
+    "NIFTY MEDIA": "https://www.niftyindices.com/IndexConstituent/ind_niftymedia_list.csv",
+    "NIFTY METAL": "https://www.niftyindices.com/IndexConstituent/ind_niftymetal_list.csv",
+    "NIFTY PHARMA": "https://www.niftyindices.com/IndexConstituent/ind_niftypharma_list.csv",
+    "NIFTY PSU BANK": "https://www.niftyindices.com/IndexConstituent/ind_niftypsubank_list.csv",
+    "NIFTY REALTY": "https://www.niftyindices.com/IndexConstituent/ind_niftyrealty_list.csv",
+    "NIFTY PRIVATE BANK": "https://www.niftyindices.com/IndexConstituent/ind_niftyprivatebank_list.csv",
+    "NIFTY OIL & GAS": "https://www.niftyindices.com/IndexConstituent/ind_niftyoilgas_list.csv",
+}
+
+
+def _constituents_from_csv(index_name: str) -> list[dict]:
+    url = CONSTITUENT_CSV_URLS.get(index_name.upper())
+    if not url:
+        return []
+    response = requests.get(
+        url,
+        headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36",
+            "Accept": "text/csv,*/*",
+            "Referer": "https://www.niftyindices.com/",
+        },
+        timeout=20,
+    )
+    response.raise_for_status()
+    rows = csv.DictReader(StringIO(response.content.decode("utf-8-sig", errors="replace")))
+    constituents = []
+    for row in rows:
+        normalized = {str(key or "").strip().lower(): str(value or "").strip() for key, value in row.items()}
+        symbol = (normalized.get("symbol") or normalized.get("ticker") or "").upper()
+        if not symbol:
+            continue
+        company_name = (
+            normalized.get("company name")
+            or normalized.get("companyname")
+            or normalized.get("name")
+            or symbol
+        )
+        constituents.append({
+            "symbol": symbol,
+            "company_name": company_name,
+            "price": None,
+            "change_percent": None,
+            "volume": None,
+        })
+    return constituents
+
+
 def _get_constituents(index_name: str) -> list[dict]:
     cache_key = f"sector-constituents:{index_name}"
     cached = market_cache.get(cache_key)
-    if cached is not None:
+    # Do not reuse an empty result from an earlier upstream outage.
+    if cached:
         return cached
 
-    session = requests.Session()
-    session.headers.update({
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36",
-        "Accept": "application/json,text/plain,*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.nseindia.com/",
-    })
-    session.get("https://www.nseindia.com/", timeout=10)
-    response = session.get(
-        "https://www.nseindia.com/api/equity-stockIndices",
-        params={"index": index_name},
-        timeout=15,
-    )
-    response.raise_for_status()
-    payload = response.json()
-    rows = payload.get("data") or []
-    constituents = []
-    for row in rows:
-        symbol = str(row.get("symbol") or "").strip().upper()
-        if not symbol or symbol == index_name.upper():
-            continue
-        try:
-            price = float(row.get("lastPrice")) if row.get("lastPrice") is not None else None
-        except (TypeError, ValueError):
-            price = None
-        try:
-            change_percent = float(row.get("pChange")) if row.get("pChange") is not None else None
-        except (TypeError, ValueError):
-            change_percent = None
-        constituents.append({
-            "symbol": symbol,
-            "company_name": row.get("meta", {}).get("companyName") or row.get("companyName") or symbol,
-            "price": price,
-            "change_percent": change_percent,
-            "volume": row.get("totalTradedVolume"),
+    nse_error = None
+    try:
+        session = requests.Session()
+        session.headers.update({
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/125.0 Safari/537.36",
+            "Accept": "application/json,text/plain,*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.nseindia.com/",
         })
-    constituents.sort(key=lambda item: item["change_percent"] if item["change_percent"] is not None else -999, reverse=True)
-    market_cache.set(cache_key, constituents, CACHE_TTL_SECONDS)
-    return constituents
+        session.get("https://www.nseindia.com/", timeout=10)
+        response = session.get(
+            "https://www.nseindia.com/api/equity-stockIndices",
+            params={"index": index_name},
+            timeout=15,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        rows = payload.get("data") or []
+        constituents = []
+        for row in rows:
+            symbol = str(row.get("symbol") or "").strip().upper()
+            if not symbol or symbol == index_name.upper():
+                continue
+            try:
+                price = float(row.get("lastPrice")) if row.get("lastPrice") is not None else None
+            except (TypeError, ValueError):
+                price = None
+            try:
+                change_percent = float(row.get("pChange")) if row.get("pChange") is not None else None
+            except (TypeError, ValueError):
+                change_percent = None
+            constituents.append({
+                "symbol": symbol,
+                "company_name": row.get("meta", {}).get("companyName") or row.get("companyName") or symbol,
+                "price": price,
+                "change_percent": change_percent,
+                "volume": row.get("totalTradedVolume"),
+            })
+        if constituents:
+            constituents.sort(
+                key=lambda item: item["change_percent"] if item["change_percent"] is not None else -999,
+                reverse=True,
+            )
+            market_cache.set(cache_key, constituents, CACHE_TTL_SECONDS)
+            return constituents
+    except Exception as exc:
+        nse_error = exc
+
+    try:
+        constituents = _constituents_from_csv(index_name)
+        if constituents:
+            market_cache.set(cache_key, constituents, CACHE_TTL_SECONDS)
+            return constituents
+    except Exception as csv_exc:
+        raise RuntimeError(
+            f"NSE quote API failed ({nse_error or 'no constituents returned'}); "
+            f"Nifty Indices CSV fallback failed ({csv_exc})"
+        ) from csv_exc
+
+    raise RuntimeError(f"No constituents returned for {index_name} from NSE or Nifty Indices CSV")
 
 
 @router.get("")
