@@ -90,6 +90,17 @@ def _nse_index_history_series(index_name: str, period: str) -> list[dict]:
     response.raise_for_status()
     payload = response.json()
     rows = payload.get("data", []) if isinstance(payload, dict) else payload
+
+    # NSE has returned this endpoint in more than one shape. In current
+    # responses, data can be an object containing indexCloseOnlineRecords,
+    # rather than the list older clients expect.
+    if isinstance(rows, dict):
+        rows = (
+            rows.get("indexCloseOnlineRecords")
+            or rows.get("indexClosingOnlineRecords")
+            or rows.get("data")
+            or []
+        )
     if not isinstance(rows, list):
         return []
 
@@ -97,8 +108,20 @@ def _nse_index_history_series(index_name: str, period: str) -> list[dict]:
     for row in rows:
         if not isinstance(row, dict):
             continue
-        close = row.get("EOD_CLOSE_INDEX_VAL") or row.get("CLOSE_INDEX_VAL") or row.get("close")
-        stamp = row.get("EOD_TIMESTAMP") or row.get("TIMESTAMP") or row.get("date")
+        close = (
+            row.get("EOD_CLOSE_INDEX_VAL")
+            or row.get("CLOSE_INDEX_VAL")
+            or row.get("INDEX_CLOSE")
+            or row.get("CLOSE")
+            or row.get("close")
+        )
+        stamp = (
+            row.get("EOD_TIMESTAMP")
+            or row.get("TIMESTAMP")
+            or row.get("EOD_DATE")
+            or row.get("DATE")
+            or row.get("date")
+        )
         if close is None or not stamp:
             continue
         try:
