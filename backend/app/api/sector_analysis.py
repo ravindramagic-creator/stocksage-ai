@@ -219,16 +219,23 @@ def get_sector_analysis(
 
     cache_key = f"sector-analysis:{sector_key}:{period}"
     cached = market_cache.get(cache_key)
-    if cached is not None and not selected_symbols:
-        return cached
 
+    # Reuse cached index history, but never return the cached payload early:
+    # it may contain an empty constituent list from a previous NSE outage.
     try:
-        # Fetch index histories concurrently; both series are normalized to 100.
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            sector_future = executor.submit(_history_series, sector["symbol"], period)
-            benchmark_future = executor.submit(_history_series, BENCHMARK_SYMBOL, period)
-            sector_history = sector_future.result()
-            benchmark_history = benchmark_future.result()
+        if (
+            cached is not None
+            and cached.get("sector_history")
+            and cached.get("nifty50_history")
+        ):
+            sector_history = cached["sector_history"]
+            benchmark_history = cached["nifty50_history"]
+        else:
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                sector_future = executor.submit(_history_series, sector["symbol"], period)
+                benchmark_future = executor.submit(_history_series, BENCHMARK_SYMBOL, period)
+                sector_history = sector_future.result()
+                benchmark_history = benchmark_future.result()
         if not sector_history:
             raise RuntimeError(f"No historical data returned for {sector['name']}")
         if not benchmark_history:
