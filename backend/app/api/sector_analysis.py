@@ -16,8 +16,10 @@ router = APIRouter(prefix="/market/sectors", tags=["Sector Analysis"])
 SECTORS = [
     {"key": "auto", "name": "NIFTY Auto", "nse_index": "NIFTY AUTO", "symbol": "^CNXAUTO"},
     {"key": "bank", "name": "NIFTY Bank", "nse_index": "NIFTY BANK", "symbol": "^NSEBANK"},
-    {"key": "financial-services", "name": "NIFTY Financial Services", "nse_index": "NIFTY FINANCIAL SERVICES", "symbol": "^CNXFIN"},
+    {"key": "financial-services", "name": "NIFTY Financial Services", "nse_index": "NIFTY FINANCIAL SERVICES", "symbol": "^CNXFINANCE"},
     {"key": "fmcg", "name": "NIFTY FMCG", "nse_index": "NIFTY FMCG", "symbol": "^CNXFMCG"},
+    {"key": "healthcare", "name": "NIFTY Healthcare", "nse_index": "NIFTY HEALTHCARE", "symbol": "^CNXHEALTH"},
+    {"key": "consumer-durables", "name": "NIFTY Consumer Durables", "nse_index": "NIFTY CONSUMER DURABLES", "symbol": "^CNXCONSUM"},
     {"key": "it", "name": "NIFTY IT", "nse_index": "NIFTY IT", "symbol": "^CNXIT"},
     {"key": "media", "name": "NIFTY Media", "nse_index": "NIFTY MEDIA", "symbol": "^CNXMEDIA"},
     {"key": "metal", "name": "NIFTY Metal", "nse_index": "NIFTY METAL", "symbol": "^CNXMETAL"},
