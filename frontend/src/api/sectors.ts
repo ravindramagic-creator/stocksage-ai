@@ -29,6 +29,7 @@ export interface SectorAnalysisResponse {
   excess_return_percent: number | null;
   sector_history: SectorHistoryPoint[];
   nifty50_history: SectorHistoryPoint[];
+  constituent_histories: Record<string, SectorHistoryPoint[]>;
   constituents: SectorConstituent[];
   constituents_error: string | null;
   updated_at: string;
@@ -42,10 +43,11 @@ export async function getSectorIndices(): Promise<SectorIndex[]> {
 export async function getSectorAnalysis(
   sectorKey: string,
   period: string,
+  symbols: string[] = [],
 ): Promise<SectorAnalysisResponse> {
   const response = await apiClient.get<SectorAnalysisResponse>(
     `/market/sectors/${encodeURIComponent(sectorKey)}`,
-    { params: { period } },
+    { params: { period, ...(symbols.length ? { symbols: symbols.join(",") } : {}) } },
   );
   return response.data;
 }
