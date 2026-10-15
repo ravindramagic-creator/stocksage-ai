@@ -122,6 +122,40 @@ def _constituents_from_csv(index_name: str) -> list[dict]:
     return constituents
 
 
+# Last-resort constituent universe so the UI and comparison chart still work
+# if both public index constituents endpoints are unavailable. This is a fallback
+# universe, not a claim that every entry is in the latest official index rebalance.
+STATIC_CONSTITUENTS = {
+    "NIFTY AUTO": ["MARUTI", "M&M", "TATAMOTORS", "BAJAJ-AUTO", "EICHERMOT", "HEROMOTOCO", "TVSMOTOR", "BOSCHLTD", "ASHOKLEY", "SONACOMS", "TIINDIA", "BHARATFORG"],
+    "NIFTY BANK": ["HDFCBANK", "ICICIBANK", "SBIN", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "BANKBARODA", "PNB", "IDFCFIRSTB", "FEDERALBNK", "AUBANK", "BANDHANBNK"],
+    "NIFTY FINANCIAL SERVICES": ["HDFCBANK", "ICICIBANK", "SBIN", "BAJFINANCE", "BAJAJFINSV", "KOTAKBANK", "AXISBANK", "SHRIRAMFIN", "CHOLAFIN", "JIOFIN", "HDFCLIFE", "SBILIFE"],
+    "NIFTY FMCG": ["HINDUNILVR", "ITC", "NESTLEIND", "BRITANNIA", "TATACONSUM", "GODREJCP", "DABUR", "MARICO", "COLPAL", "VBL", "UNITDSPR", "EMAMILTD"],
+    "NIFTY HEALTHCARE": ["SUNPHARMA", "DIVISLAB", "CIPLA", "DRREDDY", "APOLLOHOSP", "MAXHEALTH", "FORTIS", "MANKIND", "ZYDUSLIFE", "TORNTPHARM", "LUPIN", "AUROPHARMA"],
+    "NIFTY CONSUMER DURABLES": ["TITAN", "HAVELLS", "DIXON", "VOLTAS", "BLUESTARCO", "CROMPTON", "KALYANKJIL", "AMBER", "WHIRLPOOL", "RAJESHEXPO"],
+    "NIFTY IT": ["TCS", "INFY", "HCLTECH", "WIPRO", "TECHM", "LTIM", "PERSISTENT", "COFORGE", "MPHASIS", "KPITTECH", "OFSS", "LTTS"],
+    "NIFTY MEDIA": ["SUNTV", "ZEEL", "PVRINOX", "NAZARA", "NETWORK18", "DISHTV", "SAREGAMA", "TIPSMUSIC", "DBCORP", "JAGRAN"],
+    "NIFTY METAL": ["TATASTEEL", "JSWSTEEL", "HINDALCO", "VEDL", "COALINDIA", "JINDALSTEL", "NMDC", "SAIL", "NATIONALUM", "APLAPOLLO", "HINDZINC"],
+    "NIFTY PHARMA": ["SUNPHARMA", "DRREDDY", "DIVISLAB", "CIPLA", "TORNTPHARM", "LUPIN", "ZYDUSLIFE", "MANKIND", "AUROPHARMA", "ALKEM", "GLENMARK", "IPCA", "LAURUSLABS", "BIOCON", "ABBOTINDIA", "GLAND", "NATCOPHARM", "GRANULES", "JBCHEPHARM"],
+    "NIFTY PSU BANK": ["SBIN", "BANKBARODA", "PNB", "CANBK", "UNIONBANK", "INDIANB", "BANKINDIA", "MAHABANK", "IOB", "CENTRALBK", "UCOBANK", "PSB"],
+    "NIFTY REALTY": ["DLF", "GODREJPROP", "PRESTIGE", "OBEROIRLTY", "LODHA", "PHOENIXLTD", "BRIGADE", "SOBHA", "ANANTRAJ", "MAHLIFE"],
+    "NIFTY PRIVATE BANK": ["HDFCBANK", "ICICIBANK", "KOTAKBANK", "AXISBANK", "INDUSINDBK", "IDFCFIRSTB", "FEDERALBNK", "AUBANK", "BANDHANBNK", "YESBANK", "RBLBANK", "KARURVYSYA"],
+    "NIFTY OIL & GAS": ["RELIANCE", "ONGC", "BPCL", "IOC", "GAIL", "HINDPETRO", "IGL", "PETRONET", "ATGL", "OIL", "GUJGASLTD", "MGL"],
+}
+
+
+def _static_constituents(index_name: str) -> list[dict]:
+    return [
+        {
+            "symbol": symbol,
+            "company_name": symbol,
+            "price": None,
+            "change_percent": None,
+            "volume": None,
+        }
+        for symbol in STATIC_CONSTITUENTS.get(index_name.upper(), [])
+    ]
+
+
 def _get_constituents(index_name: str) -> list[dict]:
     cache_key = f"sector-constituents:{index_name}"
     cached = market_cache.get(cache_key)
@@ -177,18 +211,26 @@ def _get_constituents(index_name: str) -> list[dict]:
     except Exception as exc:
         nse_error = exc
 
+    csv_error = None
     try:
         constituents = _constituents_from_csv(index_name)
         if constituents:
             market_cache.set(cache_key, constituents, CACHE_TTL_SECONDS)
             return constituents
-    except Exception as csv_exc:
-        raise RuntimeError(
-            f"NSE quote API failed ({nse_error or 'no constituents returned'}); "
-            f"Nifty Indices CSV fallback failed ({csv_exc})"
-        ) from csv_exc
+    except Exception as exc:
+        csv_error = exc
 
-    raise RuntimeError(f"No constituents returned for {index_name} from NSE or Nifty Indices CSV")
+    # Keep constituent selection usable even during upstream outages. Price and
+    # daily-change fields remain null until live quote data can be fetched.
+    constituents = _static_constituents(index_name)
+    if constituents:
+        market_cache.set(cache_key, constituents, CACHE_TTL_SECONDS)
+        return constituents
+
+    raise RuntimeError(
+        f"No constituents available for {index_name}; "
+        f"NSE error={nse_error or 'no data'}, CSV error={csv_error or 'no data'}"
+    )
 
 
 @router.get("")
