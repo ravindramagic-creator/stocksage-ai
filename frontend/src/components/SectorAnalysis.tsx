@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -178,6 +178,11 @@ export function SectorAnalysis() {
   const [period, setPeriod] = useState("6mo");
   const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
 
+  // A selection belongs to the current sector only; clear it when switching sectors.
+  useEffect(() => {
+    setSelectedSymbols([]);
+  }, [sectorKey]);
+
   const sectorsQuery = useQuery({
     queryKey: ["sector-indices"],
     queryFn: getSectorIndices,
@@ -341,8 +346,17 @@ export function SectorAnalysis() {
           <div className="mt-5 rounded-lg border border-slate-800 bg-slate-950 p-3">
             <div className="font-semibold text-white">Compare individual stocks</div>
             <p className="mt-1 text-xs text-slate-500">
-              Select up to 8 constituents. Each selected stock is normalized to 100 at the start of the chosen period and plotted with the sector index and NIFTY 50.
+              Select up to 8 constituents below. Each selected stock is normalized to 100 at the start of the chosen period and plotted with the sector index and NIFTY 50.
             </p>
+            {selectedSymbols.length > 0 && analysisQuery.isFetching && (
+              <p className="mt-2 text-xs text-cyan-300">Loading selected stock history for comparison…</p>
+            )}
+            {selectedSymbols.length > 0 && !analysisQuery.isFetching &&
+              selectedSymbols.some((symbol) => !(data.constituent_histories?.[symbol]?.length)) && (
+                <p className="mt-2 text-xs text-amber-300">
+                  Some selected stocks have no history for this period. Try 1M or 6M if the selected 1D/5D data is unavailable.
+                </p>
+              )}
             <div className="mt-2 text-xs text-cyan-300">
               {selectedSymbols.length}/8 selected{selectedSymbols.length ? `: ${selectedSymbols.join(", ")}` : ""}
             </div>
